@@ -390,6 +390,24 @@ function createCard(row) {
   el.querySelector('.duracao').textContent = row.duracao || '—';
   el.querySelector('.timestamp').textContent = row.timestamp || '—';
 
+  // Alerta de bloqueio automático para abertura com paciente específico
+  const temPaciente = (row.paciente_nome || '').trim() !== '';
+  if (row.tipo === 'Abertura de horário extra' && temPaciente) {
+    const alerta = document.createElement('div');
+    alerta.className = 'mx-5 mb-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2';
+    alerta.innerHTML = `<span>⛔</span> <span>Paciente específico informado (<strong>${row.paciente_nome}</strong>) — não executar. Deixar pendente.</span>`;
+    el.querySelector('.details').before(alerta);
+  }
+
+  // Alerta para tipos sem fluxo mapeado
+  const tiposMapeados = ['Abertura de horário extra'];
+  if (!tiposMapeados.includes(row.tipo)) {
+    const alerta = document.createElement('div');
+    alerta.className = 'mx-5 mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700 flex items-center gap-2';
+    alerta.innerHTML = `<span>⚠️</span> <span>Fluxo de execução ainda não mapeado para este tipo — requer execução manual.</span>`;
+    el.querySelector('.details').before(alerta);
+  }
+
   // Dados resumo
   const resumo = el.querySelector('.dados-resumo');
   resumo.innerHTML = buildResumoHTML(row);
@@ -523,25 +541,80 @@ async function interpretRow(row, el) {
 }
 
 function buildPrompt(row) {
-  const campos = buildResumoTexto(row);
-  return `Você é um analista de backoffice da Conexa Saúde. Com base nos dados abaixo, gere um passo a passo numerado e detalhado para o analista executar a solicitação no sistema Backoffice da Conexa Saúde.
+  const t = row.tipo;
 
-DADOS DA SOLICITAÇÃO:
+  // Apenas Abertura de horário extra tem fluxo mapeado
+  if (t === 'Abertura de horário extra') {
+    return buildPromptAbertura(row);
+  }
+
+  // Outros tipos: instrução genérica informando que o fluxo ainda não foi mapeado
+  return `Você é um analista de backoffice da Conexa Saúde.
+
+O tipo de solicitação "${t}" ainda não teve seu fluxo de execução mapeado no Backoffice.
+
+Dados da solicitação:
 - Médico: ${row.nome}
 - CPF: ${row.cpf}
 - Especialidade: ${row.especialidade}
 - Plataforma: ${row.plataforma}
-- Duração atual da consulta: ${row.duracao}
-- Tipo de solicitação: ${row.tipo}
-${campos}
+- Duração: ${row.duracao}
 
-INSTRUÇÕES:
-1. Seja específico com datas, horários e nomes — use exatamente os dados fornecidos.
-2. Considere que o analista acessa o Backoffice Conexa Saúde (sistema web interno).
-3. Indique em qual menu/seção provavelmente está cada ação (ex: "Agenda > Horários").
-4. Use linguagem clara e direta. Numere cada passo.
-5. Ao final, indique se há alguma atenção especial ou validação que o analista deve fazer.
-6. Máximo de 15 passos.`;
+⚠️ Informe ao analista que este tipo de solicitação precisa ser avaliado manualmente até que o fluxo seja documentado. Deixe como PENDENTE.`;
+}
+
+function buildPromptAbertura(row) {
+  const temPaciente = (row.paciente_nome || '').trim() !== '';
+  const duracaoNum  = (row.duracao || '').replace(/[^0-9]/g, '');
+
+  if (temPaciente) {
+    return `Você é um analista de backoffice da Conexa Saúde.
+
+⛔ SOLICITAÇÃO BLOQUEADA — NÃO EXECUTAR
+
+Motivo: o campo "Nome completo do paciente" está preenchido com "${row.paciente_nome}".
+Regra: aberturas de horário extra com paciente específico não devem ser executadas pelo analista.
+
+Ação: deixar esta solicitação como PENDENTE e sinalizar para revisão manual pela equipe responsável.`;
+  }
+
+  return `Você é um analista de backoffice da Conexa Saúde.
+
+Gere um passo a passo numerado para executar a solicitação abaixo. Use exatamente os dados fornecidos. Seja direto e objetivo.
+
+TIPO: Abertura de horário extra
+MÉDICO: ${row.nome}
+CPF: ${row.cpf}
+ESPECIALIDADE: ${row.especialidade}
+PLATAFORMA: ${row.plataforma}
+DURAÇÃO DA CONSULTA: ${row.duracao} (${duracaoNum} minutos)
+DATA DE ABERTURA: ${row.ab_data}
+HORA INICIAL: ${row.ab_inicio}
+HORA FINAL: ${row.ab_fim}
+
+FLUXO REAL DO BACKOFFICE CONEXA SAÚDE — siga exatamente:
+
+1. Acesse: https://backoffice.conexasaude.com.br/usuario/profissionais
+2. No campo de busca, pesquise pelo nome "${row.nome}" ou CPF "${row.cpf}" ou e-mail "${row.email}".
+3. Verifique os resultados:
+   - Se nenhum resultado aparecer → PENDENTE: profissional não encontrado.
+   - Se o profissional estiver com status INATIVO → NÃO executar, deixar PENDENTE.
+   - Se houver MAIS DE 1 perfil com status ATIVO → NÃO executar, deixar PENDENTE para revisão manual.
+   - Se houver exatamente 1 perfil ATIVO → prosseguir.
+4. Na linha do profissional ativo, clique nos ⋮ (três pontinhos) à direita.
+5. No menu suspenso, clique em "Agenda".
+6. Na página de agenda, clique na aba "Horário adicional".
+7. Preencha os campos:
+   - Tempo de atendimento (minutos): ${duracaoNum}
+   - Antecedência de agendamento (horas): 00:00
+   - Data: ${row.ab_data}
+   - Hora inicial: ${row.ab_inicio}
+   - Hora final: ${row.ab_fim}
+8. Clique em "Programar".
+9. Confirme que o horário apareceu na lista "Horários programados" abaixo do formulário.
+10. Marque a solicitação como EXECUTADA na planilha.
+
+⚠️ ATENÇÃO: Se qualquer campo estiver em branco ou com dado inválido na planilha, NÃO executar — deixar como PENDENTE e alertar o solicitante.`;
 }
 
 function buildResumoTexto(row) {
