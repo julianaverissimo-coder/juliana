@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Automação de Agenda — Conexa Saúde</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root { --conexa: #00bcd4; --conexa-dark: #0097a7; }
+    body { background: #f0f4f8; font-family: 'Segoe UI', sans-serif; }
+    .badge-abertura    { background:#dbeafe; color:#1e40af; }
+    .badge-fechamento  { background:#fee2e2; color:#991b1b; }
+    .badge-adicionar   { background:#d1fae5; color:#065f46; }
+    .badge-alteracao   { background:#fef3c7; color:#92400e; }
+    .badge-duracao     { background:#ede9fe; color:#5b21b6; }
+    .badge-sim   { background:#d1fae5; color:#065f46; }
+    .badge-nao   { background:#fee2e2; color:#991b1b; }
+    .badge-aprovado    { background:#d1fae5; color:#065f46; }
+    .badge-reprovado   { background:#fee2e2; color:#991b1b; }
+    .badge-andamento   { background:#fef3c7; color:#92400e; }
+    .step-box { background:#f8fafc; border-left:4px solid var(--conexa); }
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .card-enter { animation: fadeIn .3s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- HEADER -->
+<header class="bg-white shadow-sm border-b border-cyan-100">
+  <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:var(--conexa)">
+        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="font-bold text-gray-800 text-lg leading-tight">Automação de Agenda</h1>
+        <p class="text-xs text-gray-400">Backoffice · Conexa Saúde</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="badge-total" class="hidden text-xs font-medium px-3 py-1 rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200"></span>
+      <button onclick="loadSheet()" id="btn-refresh"
+        class="flex items-center gap-2 text-sm px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Atualizar planilha
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- API KEY BAR -->
+<div class="bg-amber-50 border-b border-amber-200 px-6 py-3">
+  <div class="max-w-6xl mx-auto flex items-center gap-4 flex-wrap">
+    <label class="text-sm font-medium text-amber-800 whitespace-nowrap">🔑 API Key Anthropic:</label>
+    <input id="api-key" type="password" placeholder="sk-ant-..."
+      class="flex-1 min-w-48 text-sm px-3 py-1.5 rounded-lg border border-amber-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"/>
+    <button onclick="saveKey()"
+      class="text-sm px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-medium transition">
+      Salvar
+    </button>
+    <span id="key-status" class="text-xs text-amber-700 hidden">✓ Salvo na sessão</span>
+    <button onclick="interpretAll()" id="btn-all"
+      class="ml-auto text-sm px-4 py-1.5 rounded-lg text-white font-medium transition hidden"
+      style="background:var(--conexa)">
+      ✨ Interpretar todas com IA
+    </button>
+  </div>
+</div>
+
+<!-- FILTROS -->
+<div class="max-w-6xl mx-auto px-6 mt-6 mb-4 flex flex-wrap gap-3 items-center">
+  <span class="text-sm font-medium text-gray-500">Filtrar:</span>
+  <select id="filter-tipo" onchange="renderCards()"
+    class="text-sm px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none">
+    <option value="">Todos os tipos</option>
+    <option>Abertura de horário extra</option>
+    <option>Fechamento de agenda com reposição</option>
+    <option>Fechamento de agenda sem reposição</option>
+    <option>Adicionar novos horários à agenda fixa</option>
+    <option>Solicitação de alteração da agenda fixa</option>
+    <option>Mudança de duração de atendimento</option>
+  </select>
+  <input id="filter-medico" oninput="renderCards()" placeholder="Buscar médico..."
+    class="text-sm px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none w-48"/>
+  <label class="flex items-center gap-2 text-sm text-gray-600 ml-auto">
+    <input type="checkbox" id="filter-done" onchange="renderCards()" class="rounded"/>
+    Ocultar executados
+  </label>
+</div>
+
+<!-- MAIN -->
+<main class="max-w-6xl mx-auto px-6 pb-12">
+  <div id="state-loading" class="text-center py-20 text-gray-400">
+    <div class="w-8 h-8 rounded-full border-4 border-cyan-300 border-t-cyan-600 spin mx-auto mb-4"></div>
+    <p class="text-sm">Carregando planilha...</p>
+  </div>
+  <div id="state-empty" class="hidden text-center py-20 text-gray-400">
+    <p class="text-4xl mb-3">📭</p>
+    <p class="font-medium text-gray-600">Nenhuma solicitação aprovada encontrada</p>
+    <p class="text-sm mt-1">Verifique se a coluna "Aprovado pela Gestão Médica?" está com "SIM"</p>
+  </div>
+  <div id="state-error" class="hidden text-center py-20 text-gray-400">
+    <p class="text-4xl mb-3">⚠️</p>
+    <p id="err-msg" class="font-medium text-red-500"></p>
+    <button onclick="loadSheet()" class="mt-4 text-sm px-4 py-2 rounded-lg bg-red-50 text-red-600 hover:bg-red-100">Tentar novamente</button>
+  </div>
+  <div id="cards-container" class="hidden space-y-4"></div>
+</main>
+
+<!-- CARD TEMPLATE (hidden) -->
+<template id="card-template">
+  <div class="card-enter bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+    <div class="px-5 py-4 flex items-start justify-between gap-4">
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 flex-wrap mb-1">
+          <span class="badge-tipo text-xs font-semibold px-2.5 py-0.5 rounded-full"></span>
+          <span class="badge-status text-xs font-medium px-2 py-0.5 rounded-full"></span>
+          <span class="badge-gestao text-xs font-medium px-2 py-0.5 rounded-full"></span>
+        </div>
+        <h3 class="nome font-semibold text-gray-800 truncate"></h3>
+        <p class="text-xs text-gray-400 mt-0.5"><span class="especialidade"></span> · <span class="plataforma"></span> · <span class="duracao"></span> · <span class="timestamp"></span></p>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <button class="btn-done text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500 transition">
+          ✓ Marcar executado
+        </button>
+        <button class="btn-toggle text-sm px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500 transition">
+          ▼
+        </button>
+      </div>
+    </div>
+    <!-- DETAILS (collapsed) -->
+    <div class="details hidden border-t border-gray-100">
+      <div class="px-5 py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="dados-resumo text-sm text-gray-600 space-y-1.5"></div>
+        <div class="ai-section">
+          <div class="ai-placeholder flex flex-col items-center justify-center py-6 text-center">
+            <div class="w-10 h-10 rounded-full flex items-center justify-center mb-2" style="background:#e0f7fa">
+              <svg class="w-5 h-5" style="color:var(--conexa)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.35.35A3.75 3.75 0 0112 18.75a3.75 3.75 0 01-2.636-1.1l-.35-.35z"/>
+              </svg>
+            </div>
+            <p class="text-xs text-gray-500 mb-3">Clique para a IA gerar o passo a passo</p>
+            <button class="btn-ai text-sm px-4 py-2 rounded-lg text-white font-medium transition" style="background:var(--conexa)">
+              ✨ Interpretar com IA
+            </button>
+          </div>
+          <div class="ai-loading hidden flex-col items-center justify-center py-6 text-center">
+            <div class="w-6 h-6 rounded-full border-4 border-cyan-300 border-t-cyan-600 spin mb-2"></div>
+            <p class="text-xs text-gray-400">Analisando solicitação...</p>
+          </div>
+          <div class="ai-result hidden">
+            <div class="step-box rounded-lg p-4 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed"></div>
+            <button class="btn-ai-retry mt-2 text-xs text-gray-400 hover:text-gray-600">↺ Regerar</button>
+          </div>
+          <div class="ai-error hidden text-xs text-red-500 py-4 text-center"></div>
+        </div>
+      </div>
+      <div class="raw-section hidden px-5 pb-4">
+        <p class="text-xs font-medium text-gray-400 mb-2">Dados brutos da planilha</p>
+        <div class="raw-data text-xs font-mono bg-gray-50 rounded p-3 text-gray-600 space-y-0.5 max-h-48 overflow-y-auto"></div>
+      </div>
+      <div class="px-5 pb-3">
+        <button class="btn-raw text-xs text-gray-400 hover:text-gray-600">Ver dados brutos ▾</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const SHEET_ID  = '1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8';
+const SHEET_GID = '1722470876';
+const CSV_URL   = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
+
+// Column indexes (0-based)
+const COL = {
+  timestamp:   0,
+  email:       1,
+  nome:        2,
+  cpf:         3,
+  especialidade: 4,
+  plataforma:  5,
+  duracao:     6,
+  tipo:        7,
+  paciente_q:  8,
+  paciente_nome: 9,
+  paciente_cpf: 10,
+  // Abertura horário extra
+  ab_data:     11,
+  ab_inicio:   12,
+  ab_fim:      13,
+  // Fechamento com reposição
+  fc_data_ini: 14,
+  fc_data_fim: 15,
+  fc_hora_ini: 16,
+  fc_hora_fim: 17,
+  obs:         18,
+  fc_rep_data: 19,
+  fc_rep_ini:  20,
+  fc_rep_fim:  21,
+  // Fechamento sem reposição
+  fs_data_ini: 22,
+  fs_data_fim: 23,
+  fs_hora_ini: 24,
+  fs_hora_fim: 25,
+  fs_just:     26,
+  // Alteração agenda fixa
+  alt_dias_atual: 27,
+  alt_dias_manter: 28,
+  alt_horarios:   29,
+  alt_data:       30,
+  // Adicionar à agenda fixa
+  add_dias:    31,
+  add_horarios: 32,
+  add_data:    33,
+  // Saída / mudança duração
+  saida_razao: 34,
+  saida_data:  35,
+  dur_nova:    36,
+  dur_data:    37,
+  // Controle
+  email_disp:  38,
+  analista:    39,
+  status:      40,
+  aprovado:    41, // ← "SIM" ou "NÃO"
+  exec_data:   42,
+  exec_hora:   43,
+  sla:         44,
+  sla_status:  45,
+  alerta:      46,
+  email_and:   47,
+};
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let allRows = [];      // parsed rows (objects)
+let executed = new Set(JSON.parse(localStorage.getItem('executed') || '[]'));
+let apiKey = sessionStorage.getItem('conexa_api_key') || '';
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  if (apiKey) {
+    document.getElementById('api-key').value = apiKey;
+    showKeyStatus();
+  }
+  loadSheet();
+});
+
+// ─── KEY ──────────────────────────────────────────────────────────────────────
+function saveKey() {
+  apiKey = document.getElementById('api-key').value.trim();
+  sessionStorage.setItem('conexa_api_key', apiKey);
+  showKeyStatus();
+}
+function showKeyStatus() {
+  const s = document.getElementById('key-status');
+  s.classList.remove('hidden');
+  setTimeout(() => s.classList.add('hidden'), 3000);
+}
+
+// ─── LOAD SHEET ───────────────────────────────────────────────────────────────
+async function loadSheet() {
+  setState('loading');
+  try {
+    const resp = await fetch(CSV_URL);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const text = await resp.text();
+    const rows = parseCSV(text);
+    if (rows.length < 2) throw new Error('Planilha vazia ou formato inválido');
+    const header = rows[0];
+    allRows = rows.slice(1)
+      .filter(r => r.length > COL.aprovado)
+      .map((r, i) => buildRow(r, i));
+    const approved = allRows.filter(r => r.aprovado === 'SIM');
+    if (approved.length === 0) {
+      setState('empty');
+      return;
+    }
+    setState('cards');
+    renderCards();
+    updateBadge(approved.length);
+    document.getElementById('btn-all').classList.remove('hidden');
+  } catch (e) {
+    setState('error', e.message);
+  }
+}
+
+function buildRow(r, i) {
+  const g = (idx) => (r[idx] || '').trim();
+  return {
+    _idx: i,
+    _key: `row_${i}`,
+    timestamp:    g(COL.timestamp),
+    email:        g(COL.email),
+    nome:         g(COL.nome),
+    cpf:          g(COL.cpf),
+    especialidade: g(COL.especialidade),
+    plataforma:   g(COL.plataforma),
+    duracao:      g(COL.duracao),
+    tipo:         g(COL.tipo),
+    paciente_q:   g(COL.paciente_q),
+    paciente_nome: g(COL.paciente_nome),
+    paciente_cpf: g(COL.paciente_cpf),
+    ab_data:      g(COL.ab_data),
+    ab_inicio:    g(COL.ab_inicio),
+    ab_fim:       g(COL.ab_fim),
+    fc_data_ini:  g(COL.fc_data_ini),
+    fc_data_fim:  g(COL.fc_data_fim),
+    fc_hora_ini:  g(COL.fc_hora_ini),
+    fc_hora_fim:  g(COL.fc_hora_fim),
+    obs:          g(COL.obs),
+    fc_rep_data:  g(COL.fc_rep_data),
+    fc_rep_ini:   g(COL.fc_rep_ini),
+    fc_rep_fim:   g(COL.fc_rep_fim),
+    fs_data_ini:  g(COL.fs_data_ini),
+    fs_data_fim:  g(COL.fs_data_fim),
+    fs_hora_ini:  g(COL.fs_hora_ini),
+    fs_hora_fim:  g(COL.fs_hora_fim),
+    fs_just:      g(COL.fs_just),
+    alt_dias_atual: g(COL.alt_dias_atual),
+    alt_dias_manter: g(COL.alt_dias_manter),
+    alt_horarios: g(COL.alt_horarios),
+    alt_data:     g(COL.alt_data),
+    add_dias:     g(COL.add_dias),
+    add_horarios: g(COL.add_horarios),
+    add_data:     g(COL.add_data),
+    saida_razao:  g(COL.saida_razao),
+    saida_data:   g(COL.saida_data),
+    dur_nova:     g(COL.dur_nova),
+    dur_data:     g(COL.dur_data),
+    analista:     g(COL.analista),
+    status:       g(COL.status),
+    aprovado:     g(COL.aprovado).toUpperCase(),
+    sla:          g(COL.sla),
+    alerta:       g(COL.alerta),
+    _raw:         r,
+  };
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────────────
+function renderCards() {
+  const container = document.getElementById('cards-container');
+  container.innerHTML = '';
+  const filterTipo   = document.getElementById('filter-tipo').value;
+  const filterMedico = document.getElementById('filter-medico').value.toLowerCase();
+  const hideDone     = document.getElementById('filter-done').checked;
+
+  const rows = allRows.filter(r => {
+    if (r.aprovado !== 'SIM') return false;
+    if (filterTipo && r.tipo !== filterTipo) return false;
+    if (filterMedico && !r.nome.toLowerCase().includes(filterMedico)) return false;
+    if (hideDone && executed.has(r._key)) return false;
+    return true;
+  });
+
+  rows.forEach(row => container.appendChild(createCard(row)));
+  updateBadge(rows.length);
+}
+
+function createCard(row) {
+  const tmpl = document.getElementById('card-template');
+  const el = tmpl.content.cloneNode(true).firstElementChild;
+
+  // Badges
+  el.querySelector('.badge-tipo').textContent = row.tipo;
+  el.querySelector('.badge-tipo').className += ' ' + tipoBadgeClass(row.tipo);
+
+  const bStatus = el.querySelector('.badge-status');
+  bStatus.textContent = row.status || '—';
+  bStatus.className += ' ' + statusBadgeClass(row.status);
+
+  const bGestao = el.querySelector('.badge-gestao');
+  if (row.aprovado === 'SIM') {
+    bGestao.textContent = '✓ Aprovado Gestão';
+    bGestao.className += ' badge-sim';
+  }
+
+  el.querySelector('.nome').textContent = row.nome || '(sem nome)';
+  el.querySelector('.especialidade').textContent = row.especialidade || '—';
+  el.querySelector('.plataforma').textContent = row.plataforma || '—';
+  el.querySelector('.duracao').textContent = row.duracao || '—';
+  el.querySelector('.timestamp').textContent = row.timestamp || '—';
+
+  // Dados resumo
+  const resumo = el.querySelector('.dados-resumo');
+  resumo.innerHTML = buildResumoHTML(row);
+
+  // Done badge
+  if (executed.has(row._key)) {
+    el.style.opacity = '0.6';
+    el.querySelector('.btn-done').textContent = '✓ Executado';
+    el.querySelector('.btn-done').classList.add('bg-green-50', 'text-green-600', 'border-green-200');
+  }
+
+  // Events
+  el.querySelector('.btn-toggle').addEventListener('click', () => {
+    const d = el.querySelector('.details');
+    const btn = el.querySelector('.btn-toggle');
+    d.classList.toggle('hidden');
+    btn.textContent = d.classList.contains('hidden') ? '▼' : '▲';
+  });
+
+  el.querySelector('.btn-done').addEventListener('click', () => markDone(row._key, el));
+
+  const btnAI = el.querySelector('.btn-ai');
+  btnAI.addEventListener('click', () => interpretRow(row, el));
+
+  const btnRetry = el.querySelector('.btn-ai-retry');
+  btnRetry.addEventListener('click', () => interpretRow(row, el));
+
+  el.querySelector('.btn-raw').addEventListener('click', () => {
+    const section = el.querySelector('.raw-section');
+    section.classList.toggle('hidden');
+    const rawDiv = section.querySelector('.raw-data');
+    if (rawDiv.innerHTML === '') {
+      const headers = ['Carimbo','E-mail','Nome','CPF','Especialidade','Plataforma','Duração','Tipo','Paciente?','Pac.Nome','Pac.CPF','Ab.Data','Ab.Ini','Ab.Fim','Fc.DtIni','Fc.DtFim','Fc.HrIni','Fc.HrFim','Obs','Rep.Data','Rep.Ini','Rep.Fim','Fs.DtIni','Fs.DtFim','Fs.HrIni','Fs.HrFim','Fs.Just','Alt.DiaAtual','Alt.DiasManter','Alt.Horarios','Alt.Data','Add.Dias','Add.Horarios','Add.Data','Saida.Razao','Saida.Data','Dur.Nova','Dur.Data','EmailDisp','Analista','Status','Aprovado','Exec.Data','Exec.Hora','SLA','SLA Status','Alerta','EmailAnd'];
+      rawDiv.innerHTML = row._raw.map((v, i) => v ? `<div><span class="text-gray-400">${headers[i]||i}:</span> ${v}</div>` : '').filter(Boolean).join('');
+    }
+    el.querySelector('.btn-raw').textContent = section.classList.contains('hidden') ? 'Ver dados brutos ▾' : 'Ocultar dados brutos ▴';
+  });
+
+  return el;
+}
+
+function buildResumoHTML(row) {
+  const lines = [];
+  const add = (label, val) => val ? lines.push(`<div><span class="font-medium text-gray-700">${label}:</span> ${val}</div>`) : null;
+
+  add('CPF', row.cpf);
+  add('E-mail', row.email);
+  add('Analista', row.analista || '—');
+  add('SLA', row.sla || '—');
+
+  const t = row.tipo;
+  if (t === 'Abertura de horário extra') {
+    add('Data de abertura', row.ab_data);
+    add('Horário', `${row.ab_inicio} → ${row.ab_fim}`);
+    if (row.paciente_q === 'Sim' || row.paciente_nome) {
+      add('Paciente', `${row.paciente_nome} (${row.paciente_cpf})`);
+    }
+  } else if (t === 'Fechamento de agenda com reposição') {
+    add('Período fechamento', `${row.fc_data_ini} a ${row.fc_data_fim}`);
+    add('Horário fechamento', `${row.fc_hora_ini} → ${row.fc_hora_fim}`);
+    add('Data reposição', row.fc_rep_data);
+    add('Horário reposição', `${row.fc_rep_ini} → ${row.fc_rep_fim}`);
+    add('Observação', row.obs);
+  } else if (t === 'Fechamento de agenda sem reposição') {
+    add('Período fechamento', `${row.fs_data_ini} a ${row.fs_data_fim}`);
+    add('Horário fechamento', `${row.fs_hora_ini} → ${row.fs_hora_fim}`);
+    add('Justificativa', row.fs_just);
+  } else if (t === 'Adicionar novos horários à agenda fixa') {
+    add('Dias a incluir', row.add_dias);
+    add('Horários por dia', row.add_horarios);
+    add('Vigência a partir de', row.add_data);
+  } else if (t === 'Solicitação de alteração da agenda fixa') {
+    add('Dias atuais', row.alt_dias_atual);
+    add('Dias a manter', row.alt_dias_manter);
+    add('Novos horários', row.alt_horarios);
+    add('Vigência a partir de', row.alt_data);
+  } else if (t === 'Mudança de duração de atendimento') {
+    add('Nova duração', row.dur_nova);
+    add('Vigência a partir de', row.dur_data);
+  }
+  return lines.join('');
+}
+
+// ─── AI ───────────────────────────────────────────────────────────────────────
+async function interpretRow(row, el) {
+  if (!apiKey) { alert('Informe a API Key Anthropic primeiro.'); return; }
+  const ph = el.querySelector('.ai-placeholder');
+  const ld = el.querySelector('.ai-loading');
+  const rs = el.querySelector('.ai-result');
+  const er = el.querySelector('.ai-error');
+  ph.classList.add('hidden');
+  ld.classList.remove('hidden');
+  rs.classList.add('hidden');
+  er.classList.add('hidden');
+
+  // Make details visible
+  el.querySelector('.details').classList.remove('hidden');
+  el.querySelector('.btn-toggle').textContent = '▲';
+
+  try {
+    const prompt = buildPrompt(row);
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error?.message || `HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    const text = data.content?.[0]?.text || '(sem resposta)';
+    ld.classList.add('hidden');
+    rs.classList.remove('hidden');
+    rs.querySelector('.step-box').textContent = text;
+  } catch (e) {
+    ld.classList.add('hidden');
+    er.classList.remove('hidden');
+    er.textContent = `Erro: ${e.message}`;
+    ph.classList.remove('hidden');
+  }
+}
+
+function buildPrompt(row) {
+  const campos = buildResumoTexto(row);
+  return `Você é um analista de backoffice da Conexa Saúde. Com base nos dados abaixo, gere um passo a passo numerado e detalhado para o analista executar a solicitação no sistema Backoffice da Conexa Saúde.
+
+DADOS DA SOLICITAÇÃO:
+- Médico: ${row.nome}
+- CPF: ${row.cpf}
+- Especialidade: ${row.especialidade}
+- Plataforma: ${row.plataforma}
+- Duração atual da consulta: ${row.duracao}
+- Tipo de solicitação: ${row.tipo}
+${campos}
+
+INSTRUÇÕES:
+1. Seja específico com datas, horários e nomes — use exatamente os dados fornecidos.
+2. Considere que o analista acessa o Backoffice Conexa Saúde (sistema web interno).
+3. Indique em qual menu/seção provavelmente está cada ação (ex: "Agenda > Horários").
+4. Use linguagem clara e direta. Numere cada passo.
+5. Ao final, indique se há alguma atenção especial ou validação que o analista deve fazer.
+6. Máximo de 15 passos.`;
+}
+
+function buildResumoTexto(row) {
+  const t = row.tipo;
+  if (t === 'Abertura de horário extra') {
+    return `- Data: ${row.ab_data}\n- Horário: ${row.ab_inicio} → ${row.ab_fim}${row.paciente_nome ? `\n- Paciente específico: ${row.paciente_nome} (CPF: ${row.paciente_cpf})` : ''}`;
+  } else if (t === 'Fechamento de agenda com reposição') {
+    return `- Período de fechamento: ${row.fc_data_ini} a ${row.fc_data_fim}\n- Horário fechado: ${row.fc_hora_ini} → ${row.fc_hora_fim}\n- Observação: ${row.obs}\n- Data de reposição: ${row.fc_rep_data}\n- Horário de reposição: ${row.fc_rep_ini} → ${row.fc_rep_fim}`;
+  } else if (t === 'Fechamento de agenda sem reposição') {
+    return `- Período de fechamento: ${row.fs_data_ini} a ${row.fs_data_fim}\n- Horário fechado: ${row.fs_hora_ini} → ${row.fs_hora_fim}\n- Justificativa: ${row.fs_just}`;
+  } else if (t === 'Adicionar novos horários à agenda fixa') {
+    return `- Dias a incluir: ${row.add_dias}\n- Horários por dia: ${row.add_horarios}\n- Vigência a partir de: ${row.add_data}`;
+  } else if (t === 'Solicitação de alteração da agenda fixa') {
+    return `- Dias atuais: ${row.alt_dias_atual}\n- Dias a manter: ${row.alt_dias_manter}\n- Novos horários: ${row.alt_horarios}\n- Vigência a partir de: ${row.alt_data}`;
+  } else if (t === 'Mudança de duração de atendimento') {
+    return `- Nova duração desejada: ${row.dur_nova}\n- Vigência a partir de: ${row.dur_data}`;
+  }
+  return '';
+}
+
+async function interpretAll() {
+  const rows = allRows.filter(r => r.aprovado === 'SIM');
+  for (const row of rows) {
+    if (executed.has(row._key)) continue;
+    const el = document.querySelector(`[data-key="${row._key}"]`);
+    if (el) await interpretRow(row, el);
+  }
+}
+
+// ─── DONE ─────────────────────────────────────────────────────────────────────
+function markDone(key, el) {
+  executed.add(key);
+  localStorage.setItem('executed', JSON.stringify([...executed]));
+  el.style.opacity = '0.6';
+  const btn = el.querySelector('.btn-done');
+  btn.textContent = '✓ Executado';
+  btn.classList.add('bg-green-50', 'text-green-600', 'border-green-200');
+}
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+function setState(s, msg) {
+  document.getElementById('state-loading').classList.add('hidden');
+  document.getElementById('state-empty').classList.add('hidden');
+  document.getElementById('state-error').classList.add('hidden');
+  document.getElementById('cards-container').classList.add('hidden');
+  if (s === 'loading') document.getElementById('state-loading').classList.remove('hidden');
+  else if (s === 'empty')  document.getElementById('state-empty').classList.remove('hidden');
+  else if (s === 'error')  { document.getElementById('state-error').classList.remove('hidden'); document.getElementById('err-msg').textContent = msg; }
+  else if (s === 'cards')  document.getElementById('cards-container').classList.remove('hidden');
+}
+
+function updateBadge(n) {
+  const b = document.getElementById('badge-total');
+  b.textContent = `${n} aprovada${n !== 1 ? 's' : ''}`;
+  b.classList.remove('hidden');
+}
+
+function tipoBadgeClass(tipo) {
+  if (tipo?.includes('Abertura')) return 'badge-abertura';
+  if (tipo?.includes('Fechamento')) return 'badge-fechamento';
+  if (tipo?.includes('Adicionar')) return 'badge-adicionar';
+  if (tipo?.includes('alteração') || tipo?.includes('Alteração')) return 'badge-alteracao';
+  if (tipo?.includes('duração') || tipo?.includes('Mudança')) return 'badge-duracao';
+  return 'bg-gray-100 text-gray-600';
+}
+
+function statusBadgeClass(status) {
+  if (!status) return 'bg-gray-100 text-gray-500';
+  const s = status.toLowerCase();
+  if (s.includes('aprovado')) return 'badge-aprovado';
+  if (s.includes('reprovado')) return 'badge-reprovado';
+  if (s.includes('andamento')) return 'badge-andamento';
+  return 'bg-gray-100 text-gray-500';
+}
+
+// ─── CSV PARSER ───────────────────────────────────────────────────────────────
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"' && text[i+1] === '"') { field += '"'; i++; }
+      else if (c === '"') inQ = false;
+      else field += c;
+    } else {
+      if (c === '"') { inQ = true; }
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n' || (c === '\r' && text[i+1] === '\n')) {
+        if (c === '\r') i++;
+        row.push(field); field = '';
+        rows.push(row); row = [];
+      } else field += c;
+    }
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+</script>
+</body>
+</html>
