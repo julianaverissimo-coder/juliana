@@ -612,9 +612,12 @@ FLUXO REAL DO BACKOFFICE CONEXA SAÚDE — siga exatamente:
    - Hora final: ${row.ab_fim}
 8. Clique em "Programar".
 9. Confirme que o horário apareceu na lista "Horários programados" abaixo do formulário.
-10. Marque a solicitação como EXECUTADA na planilha.
+10. Volte para a planilha Google Sheets da solicitação.
+11. Na linha desta solicitação, localize a coluna AO ("Status") e preencha com: Aprovado
+    → Isso dispara automaticamente o e-mail de confirmação para o médico.
+12. Marque a solicitação como EXECUTADA no painel.
 
-⚠️ ATENÇÃO: Se qualquer campo estiver em branco ou com dado inválido na planilha, NÃO executar — deixar como PENDENTE e alertar o solicitante.`;
+⚠️ ATENÇÃO: Só preencha "Aprovado" na coluna AO após confirmar que o horário foi programado com sucesso no Backoffice. O preenchimento dispara e-mail automático ao médico.`;
 }
 
 function buildResumoTexto(row) {
