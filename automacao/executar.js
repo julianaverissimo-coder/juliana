@@ -38,23 +38,20 @@ async function executar() {
   inf(`Duração: ${SOLICITACAO.duracao_min} minutos`);
   sep();
 
-  // Usa o perfil do Chrome para herdar sessão logada
-  // IMPORTANTE: feche o Chrome antes de rodar este script!
+  // Usa o Chrome instalado no Windows
   let context;
   try {
-    inf('Abrindo Chrome com sua sessão existente...');
-    context = await chromium.launchPersistentContext(chromePerfil(), {
+    inf('Abrindo Chrome...');
+    const browser = await chromium.launch({
       headless: false,
       slowMo: 600,
-      args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
-      ignoreDefaultArgs: ['--enable-automation'],
-      channel: 'chrome', // usa o Chrome instalado (não o Chromium do Playwright)
+      channel: 'chrome',
+      args: ['--no-sandbox'],
     });
-  } catch (e) {
-    // Fallback: abre navegador limpo se Chrome estiver em uso
-    inf('Chrome em uso — abrindo navegador separado. Você precisará logar manualmente.');
-    const browser = await chromium.launch({ headless: false, slowMo: 600 });
     context = await browser.newContext();
+  } catch (e) {
+    err(`Não conseguiu abrir o Chrome: ${e.message}`);
+    process.exit(1);
   }
 
   const page = await context.newPage();
