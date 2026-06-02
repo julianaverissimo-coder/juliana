@@ -9,7 +9,6 @@ if not "%PSModulePath%"=="" (
 
 title Fixar Automacao na Area de Trabalho 1
 color 0A
-mode con cols=90 lines=25
 
 echo:
 echo  =============================================
@@ -33,13 +32,10 @@ echo:
 echo  Iniciando monitoramento agora...
 echo:
 
-start "Automacao Agenda - Conexa Saude" /D "%~dp0" cmd /k "color 0A && mode con cols=100 lines=35 && title Automacao Agenda - Conexa Saude && echo: && echo  ============================================= && echo   AUTOMACAO DE AGENDA - CONEXA SAUDE && echo   Monitoramento: seg-sex 07h-17h ^| 20 min && echo  ============================================= && echo: && node executar.js"
+start "Automacao Agenda - Conexa Saude" /D "%~dp0" cmd /k "color 0A && title Automacao Agenda - Conexa Saude && echo: && echo  ============================================= && echo   AUTOMACAO DE AGENDA - CONEXA SAUDE && echo   Monitoramento: seg-sex 07h-17h ^| 20 min && echo  ============================================= && echo: && node executar.js"
 
 echo:
 echo  Pronto! Janela aberta na Area de Trabalho 1.
-echo:
-echo  Para remover da inicializacao automatica, delete:
-echo  %ATALHO%
 echo:
 pause
 endlocal
