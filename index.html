@@ -179,7 +179,7 @@
 <script>
 const SHEET_ID  = '1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8';
 const SHEET_GID = '1722470876';
-const CSV_URL   = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
+const CSV_URL   = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/pub?gid=${SHEET_GID}&single=true&output=csv`;
 
 const COL = {
   timestamp:   0, email: 1, nome: 2, cpf: 3, especialidade: 4, plataforma: 5, duracao: 6, tipo: 7,
@@ -282,6 +282,7 @@ function createCard(row) {
   bStatus.className += ' ' + statusBadgeClass(row.status);
   const bGestao = el.querySelector('.badge-gestao');
   if (row.aprovado === 'SIM') { bGestao.textContent = '✓ Aprovado Gestão'; bGestao.className += ' badge-sim'; }
+
   el.querySelector('.nome').textContent = row.nome || '(sem nome)';
   el.querySelector('.especialidade').textContent = row.especialidade || '—';
   el.querySelector('.plataforma').textContent = row.plataforma || '—';
