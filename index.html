@@ -27,14 +27,12 @@
 </head>
 <body class="min-h-screen">
 
-<!-- HEADER -->
 <header class="bg-white shadow-sm border-b border-cyan-100">
   <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
     <div class="flex items-center gap-3">
       <div class="w-9 h-9 rounded-lg flex items-center justify-center" style="background:var(--conexa)">
         <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
         </svg>
       </div>
       <div>
@@ -44,11 +42,9 @@
     </div>
     <div class="flex items-center gap-3">
       <span id="badge-total" class="hidden text-xs font-medium px-3 py-1 rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200"></span>
-      <button onclick="loadSheet()" id="btn-refresh"
-        class="flex items-center gap-2 text-sm px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600 transition">
+      <button onclick="loadSheet()" class="flex items-center gap-2 text-sm px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-600 transition">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
         </svg>
         Atualizar planilha
       </button>
@@ -56,30 +52,20 @@
   </div>
 </header>
 
-<!-- API KEY BAR -->
 <div class="bg-amber-50 border-b border-amber-200 px-6 py-3">
   <div class="max-w-6xl mx-auto flex items-center gap-4 flex-wrap">
     <label class="text-sm font-medium text-amber-800 whitespace-nowrap">🔑 API Key Anthropic:</label>
     <input id="api-key" type="password" placeholder="sk-ant-..."
       class="flex-1 min-w-48 text-sm px-3 py-1.5 rounded-lg border border-amber-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"/>
-    <button onclick="saveKey()"
-      class="text-sm px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-medium transition">
-      Salvar
-    </button>
+    <button onclick="saveKey()" class="text-sm px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-medium transition">Salvar</button>
     <span id="key-status" class="text-xs text-amber-700 hidden">✓ Salvo na sessão</span>
-    <button onclick="interpretAll()" id="btn-all"
-      class="ml-auto text-sm px-4 py-1.5 rounded-lg text-white font-medium transition hidden"
-      style="background:var(--conexa)">
-      ✨ Interpretar todas com IA
-    </button>
+    <button onclick="interpretAll()" id="btn-all" class="ml-auto text-sm px-4 py-1.5 rounded-lg text-white font-medium transition hidden" style="background:var(--conexa)">✨ Interpretar todas com IA</button>
   </div>
 </div>
 
-<!-- FILTROS -->
 <div class="max-w-6xl mx-auto px-6 mt-6 mb-4 flex flex-wrap gap-3 items-center">
   <span class="text-sm font-medium text-gray-500">Filtrar:</span>
-  <select id="filter-tipo" onchange="renderCards()"
-    class="text-sm px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none">
+  <select id="filter-tipo" onchange="renderCards()" class="text-sm px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none">
     <option value="">Todos os tipos</option>
     <option>Abertura de horário extra</option>
     <option>Fechamento de agenda com reposição</option>
@@ -88,15 +74,12 @@
     <option>Solicitação de alteração da agenda fixa</option>
     <option>Mudança de duração de atendimento</option>
   </select>
-  <input id="filter-medico" oninput="renderCards()" placeholder="Buscar médico..."
-    class="text-sm px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none w-48"/>
+  <input id="filter-medico" oninput="renderCards()" placeholder="Buscar médico..." class="text-sm px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none w-48"/>
   <label class="flex items-center gap-2 text-sm text-gray-600 ml-auto">
-    <input type="checkbox" id="filter-done" onchange="renderCards()" class="rounded"/>
-    Ocultar executados
+    <input type="checkbox" id="filter-done" onchange="renderCards()" class="rounded"/> Ocultar executados
   </label>
 </div>
 
-<!-- MAIN -->
 <main class="max-w-6xl mx-auto px-6 pb-12">
   <div id="state-loading" class="text-center py-20 text-gray-400">
     <div class="w-8 h-8 rounded-full border-4 border-cyan-300 border-t-cyan-600 spin mx-auto mb-4"></div>
@@ -115,7 +98,6 @@
   <div id="cards-container" class="hidden space-y-4"></div>
 </main>
 
-<!-- CARD TEMPLATE (hidden) -->
 <template id="card-template">
   <div class="card-enter bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
     <div class="px-5 py-4 flex items-start justify-between gap-4">
@@ -129,15 +111,10 @@
         <p class="text-xs text-gray-400 mt-0.5"><span class="especialidade"></span> · <span class="plataforma"></span> · <span class="duracao"></span> · <span class="timestamp"></span></p>
       </div>
       <div class="flex items-center gap-2 shrink-0">
-        <button class="btn-done text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500 transition">
-          ✓ Marcar executado
-        </button>
-        <button class="btn-toggle text-sm px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500 transition">
-          ▼
-        </button>
+        <button class="btn-done text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500 transition">✓ Marcar executado</button>
+        <button class="btn-toggle text-sm px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-gray-500 transition">▼</button>
       </div>
     </div>
-    <!-- DETAILS (collapsed) -->
     <div class="details hidden border-t border-gray-100">
       <div class="px-5 py-4 grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="dados-resumo text-sm text-gray-600 space-y-1.5"></div>
@@ -145,14 +122,11 @@
           <div class="ai-placeholder flex flex-col items-center justify-center py-6 text-center">
             <div class="w-10 h-10 rounded-full flex items-center justify-center mb-2" style="background:#e0f7fa">
               <svg class="w-5 h-5" style="color:var(--conexa)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.35.35A3.75 3.75 0 0112 18.75a3.75 3.75 0 01-2.636-1.1l-.35-.35z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.35.35A3.75 3.75 0 0112 18.75a3.75 3.75 0 01-2.636-1.1l-.35-.35z"/>
               </svg>
             </div>
             <p class="text-xs text-gray-500 mb-3">Clique para a IA gerar o passo a passo</p>
-            <button class="btn-ai text-sm px-4 py-2 rounded-lg text-white font-medium transition" style="background:var(--conexa)">
-              ✨ Interpretar com IA
-            </button>
+            <button class="btn-ai text-sm px-4 py-2 rounded-lg text-white font-medium transition" style="background:var(--conexa)">✨ Interpretar com IA</button>
           </div>
           <div class="ai-loading hidden flex-col items-center justify-center py-6 text-center">
             <div class="w-6 h-6 rounded-full border-4 border-cyan-300 border-t-cyan-600 spin mb-2"></div>
@@ -169,383 +143,261 @@
         <p class="text-xs font-medium text-gray-400 mb-2">Dados brutos da planilha</p>
         <div class="raw-data text-xs font-mono bg-gray-50 rounded p-3 text-gray-600 space-y-0.5 max-h-48 overflow-y-auto"></div>
       </div>
-      <div class="px-5 pb-3">
-        <button class="btn-raw text-xs text-gray-400 hover:text-gray-600">Ver dados brutos ▾</button>
-      </div>
+      <div class="px-5 pb-3"><button class="btn-raw text-xs text-gray-400 hover:text-gray-600">Ver dados brutos ▾</button></div>
     </div>
   </div>
 </template>
 
 <script>
-const SHEET_ID  = '1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8';
-const SHEET_GID = '1722470876';
-const CSV_URL   = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/pub?gid=${SHEET_GID}&single=true&output=csv`;
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTD4LFltg_b14z362ci9aui4oE-gjHxLJ4b9FUm6Hj6KYcHvQQYMskaJdnJfrftc-7zYoMCDYdyOmG1/pub?gid=1722470876&single=true&output=csv';
 
 const COL = {
-  timestamp:   0, email: 1, nome: 2, cpf: 3, especialidade: 4, plataforma: 5, duracao: 6, tipo: 7,
-  paciente_q: 8, paciente_nome: 9, paciente_cpf: 10,
-  ab_data: 11, ab_inicio: 12, ab_fim: 13,
-  fc_data_ini: 14, fc_data_fim: 15, fc_hora_ini: 16, fc_hora_fim: 17, obs: 18,
-  fc_rep_data: 19, fc_rep_ini: 20, fc_rep_fim: 21,
-  fs_data_ini: 22, fs_data_fim: 23, fs_hora_ini: 24, fs_hora_fim: 25, fs_just: 26,
-  alt_dias_atual: 27, alt_dias_manter: 28, alt_horarios: 29, alt_data: 30,
-  add_dias: 31, add_horarios: 32, add_data: 33,
-  saida_razao: 34, saida_data: 35, dur_nova: 36, dur_data: 37,
-  email_disp: 38, analista: 39, status: 40, aprovado: 41,
-  exec_data: 42, exec_hora: 43, sla: 44, sla_status: 45, alerta: 46, email_and: 47,
+  timestamp:0,email:1,nome:2,cpf:3,especialidade:4,plataforma:5,duracao:6,tipo:7,
+  paciente_q:8,paciente_nome:9,paciente_cpf:10,
+  ab_data:11,ab_inicio:12,ab_fim:13,
+  fc_data_ini:14,fc_data_fim:15,fc_hora_ini:16,fc_hora_fim:17,obs:18,
+  fc_rep_data:19,fc_rep_ini:20,fc_rep_fim:21,
+  fs_data_ini:22,fs_data_fim:23,fs_hora_ini:24,fs_hora_fim:25,fs_just:26,
+  alt_dias_atual:27,alt_dias_manter:28,alt_horarios:29,alt_data:30,
+  add_dias:31,add_horarios:32,add_data:33,
+  saida_razao:34,saida_data:35,dur_nova:36,dur_data:37,
+  email_disp:38,analista:39,status:40,aprovado:41,
+  exec_data:42,exec_hora:43,sla:44,sla_status:45,alerta:46,email_and:47,
 };
 
-let allRows = [];
-let executed = new Set(JSON.parse(localStorage.getItem('executed') || '[]'));
-let apiKey = sessionStorage.getItem('conexa_api_key') || '';
+let allRows=[], executed=new Set(JSON.parse(localStorage.getItem('executed')||'[]')), apiKey=sessionStorage.getItem('conexa_api_key')||'';
 
-window.addEventListener('DOMContentLoaded', () => {
-  if (apiKey) { document.getElementById('api-key').value = apiKey; showKeyStatus(); }
+window.addEventListener('DOMContentLoaded',()=>{
+  if(apiKey){document.getElementById('api-key').value=apiKey;showKeyStatus();}
   loadSheet();
 });
 
-function saveKey() {
-  apiKey = document.getElementById('api-key').value.trim();
-  sessionStorage.setItem('conexa_api_key', apiKey);
-  showKeyStatus();
-}
-function showKeyStatus() {
-  const s = document.getElementById('key-status');
-  s.classList.remove('hidden');
-  setTimeout(() => s.classList.add('hidden'), 3000);
-}
+function saveKey(){apiKey=document.getElementById('api-key').value.trim();sessionStorage.setItem('conexa_api_key',apiKey);showKeyStatus();}
+function showKeyStatus(){const s=document.getElementById('key-status');s.classList.remove('hidden');setTimeout(()=>s.classList.add('hidden'),3000);}
 
-async function loadSheet() {
+async function loadSheet(){
   setState('loading');
-  try {
-    const resp = await fetch(CSV_URL);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const text = await resp.text();
-    const rows = parseCSV(text);
-    if (rows.length < 2) throw new Error('Planilha vazia ou formato inválido');
-    allRows = rows.slice(1).filter(r => r.length > COL.aprovado).map((r, i) => buildRow(r, i));
-    const approved = allRows.filter(r => r.aprovado === 'SIM');
-    if (approved.length === 0) { setState('empty'); return; }
-    setState('cards');
-    renderCards();
-    updateBadge(approved.length);
+  try{
+    const resp=await fetch(CSV_URL);
+    if(!resp.ok)throw new Error(`HTTP ${resp.status}`);
+    const text=await resp.text();
+    const rows=parseCSV(text);
+    if(rows.length<2)throw new Error('Planilha vazia ou formato inválido');
+    allRows=rows.slice(1).filter(r=>r.length>COL.aprovado).map((r,i)=>buildRow(r,i));
+    const approved=allRows.filter(r=>r.aprovado==='SIM');
+    if(approved.length===0){setState('empty');return;}
+    setState('cards');renderCards();updateBadge(approved.length);
     document.getElementById('btn-all').classList.remove('hidden');
-  } catch (e) {
-    setState('error', e.message);
-  }
+  }catch(e){setState('error',e.message);}
 }
 
-function buildRow(r, i) {
-  const g = (idx) => (r[idx] || '').trim();
-  return {
-    _idx: i, _key: `row_${i}`,
-    timestamp: g(COL.timestamp), email: g(COL.email), nome: g(COL.nome), cpf: g(COL.cpf),
-    especialidade: g(COL.especialidade), plataforma: g(COL.plataforma), duracao: g(COL.duracao), tipo: g(COL.tipo),
-    paciente_q: g(COL.paciente_q), paciente_nome: g(COL.paciente_nome), paciente_cpf: g(COL.paciente_cpf),
-    ab_data: g(COL.ab_data), ab_inicio: g(COL.ab_inicio), ab_fim: g(COL.ab_fim),
-    fc_data_ini: g(COL.fc_data_ini), fc_data_fim: g(COL.fc_data_fim), fc_hora_ini: g(COL.fc_hora_ini), fc_hora_fim: g(COL.fc_hora_fim), obs: g(COL.obs),
-    fc_rep_data: g(COL.fc_rep_data), fc_rep_ini: g(COL.fc_rep_ini), fc_rep_fim: g(COL.fc_rep_fim),
-    fs_data_ini: g(COL.fs_data_ini), fs_data_fim: g(COL.fs_data_fim), fs_hora_ini: g(COL.fs_hora_ini), fs_hora_fim: g(COL.fs_hora_fim), fs_just: g(COL.fs_just),
-    alt_dias_atual: g(COL.alt_dias_atual), alt_dias_manter: g(COL.alt_dias_manter), alt_horarios: g(COL.alt_horarios), alt_data: g(COL.alt_data),
-    add_dias: g(COL.add_dias), add_horarios: g(COL.add_horarios), add_data: g(COL.add_data),
-    saida_razao: g(COL.saida_razao), saida_data: g(COL.saida_data), dur_nova: g(COL.dur_nova), dur_data: g(COL.dur_data),
-    analista: g(COL.analista), status: g(COL.status), aprovado: g(COL.aprovado).toUpperCase(),
-    sla: g(COL.sla), alerta: g(COL.alerta), _raw: r,
+function buildRow(r,i){
+  const g=(idx)=>(r[idx]||'').trim();
+  return{
+    _idx:i,_key:`row_${i}`,
+    timestamp:g(COL.timestamp),email:g(COL.email),nome:g(COL.nome),cpf:g(COL.cpf),
+    especialidade:g(COL.especialidade),plataforma:g(COL.plataforma),duracao:g(COL.duracao),tipo:g(COL.tipo),
+    paciente_q:g(COL.paciente_q),paciente_nome:g(COL.paciente_nome),paciente_cpf:g(COL.paciente_cpf),
+    ab_data:g(COL.ab_data),ab_inicio:g(COL.ab_inicio),ab_fim:g(COL.ab_fim),
+    fc_data_ini:g(COL.fc_data_ini),fc_data_fim:g(COL.fc_data_fim),fc_hora_ini:g(COL.fc_hora_ini),fc_hora_fim:g(COL.fc_hora_fim),obs:g(COL.obs),
+    fc_rep_data:g(COL.fc_rep_data),fc_rep_ini:g(COL.fc_rep_ini),fc_rep_fim:g(COL.fc_rep_fim),
+    fs_data_ini:g(COL.fs_data_ini),fs_data_fim:g(COL.fs_data_fim),fs_hora_ini:g(COL.fs_hora_ini),fs_hora_fim:g(COL.fs_hora_fim),fs_just:g(COL.fs_just),
+    alt_dias_atual:g(COL.alt_dias_atual),alt_dias_manter:g(COL.alt_dias_manter),alt_horarios:g(COL.alt_horarios),alt_data:g(COL.alt_data),
+    add_dias:g(COL.add_dias),add_horarios:g(COL.add_horarios),add_data:g(COL.add_data),
+    saida_razao:g(COL.saida_razao),saida_data:g(COL.saida_data),dur_nova:g(COL.dur_nova),dur_data:g(COL.dur_data),
+    analista:g(COL.analista),status:g(COL.status),aprovado:g(COL.aprovado).toUpperCase(),
+    sla:g(COL.sla),alerta:g(COL.alerta),_raw:r,
   };
 }
 
-function renderCards() {
-  const container = document.getElementById('cards-container');
-  container.innerHTML = '';
-  const filterTipo   = document.getElementById('filter-tipo').value;
-  const filterMedico = document.getElementById('filter-medico').value.toLowerCase();
-  const hideDone     = document.getElementById('filter-done').checked;
-  const rows = allRows.filter(r => {
-    if (r.aprovado !== 'SIM') return false;
-    if (filterTipo && r.tipo !== filterTipo) return false;
-    if (filterMedico && !r.nome.toLowerCase().includes(filterMedico)) return false;
-    if (hideDone && executed.has(r._key)) return false;
+function renderCards(){
+  const container=document.getElementById('cards-container');
+  container.innerHTML='';
+  const ft=document.getElementById('filter-tipo').value;
+  const fm=document.getElementById('filter-medico').value.toLowerCase();
+  const fd=document.getElementById('filter-done').checked;
+  const rows=allRows.filter(r=>{
+    if(r.aprovado!=='SIM')return false;
+    if(ft&&r.tipo!==ft)return false;
+    if(fm&&!r.nome.toLowerCase().includes(fm))return false;
+    if(fd&&executed.has(r._key))return false;
     return true;
   });
-  rows.forEach(row => container.appendChild(createCard(row)));
+  rows.forEach(row=>container.appendChild(createCard(row)));
   updateBadge(rows.length);
 }
 
-function createCard(row) {
-  const tmpl = document.getElementById('card-template');
-  const el = tmpl.content.cloneNode(true).firstElementChild;
+function createCard(row){
+  const el=document.getElementById('card-template').content.cloneNode(true).firstElementChild;
+  el.querySelector('.badge-tipo').textContent=row.tipo;
+  el.querySelector('.badge-tipo').className+=' '+tipoBadgeClass(row.tipo);
+  const bs=el.querySelector('.badge-status');
+  bs.textContent=row.status||'—';bs.className+=' '+statusBadgeClass(row.status);
+  const bg=el.querySelector('.badge-gestao');
+  if(row.aprovado==='SIM'){bg.textContent='✓ Aprovado Gestão';bg.className+=' badge-sim';}
+  el.querySelector('.nome').textContent=row.nome||'(sem nome)';
+  el.querySelector('.especialidade').textContent=row.especialidade||'—';
+  el.querySelector('.plataforma').textContent=row.plataforma||'—';
+  el.querySelector('.duracao').textContent=row.duracao||'—';
+  el.querySelector('.timestamp').textContent=row.timestamp||'—';
 
-  el.querySelector('.badge-tipo').textContent = row.tipo;
-  el.querySelector('.badge-tipo').className += ' ' + tipoBadgeClass(row.tipo);
-  const bStatus = el.querySelector('.badge-status');
-  bStatus.textContent = row.status || '—';
-  bStatus.className += ' ' + statusBadgeClass(row.status);
-  const bGestao = el.querySelector('.badge-gestao');
-  if (row.aprovado === 'SIM') { bGestao.textContent = '✓ Aprovado Gestão'; bGestao.className += ' badge-sim'; }
-
-  el.querySelector('.nome').textContent = row.nome || '(sem nome)';
-  el.querySelector('.especialidade').textContent = row.especialidade || '—';
-  el.querySelector('.plataforma').textContent = row.plataforma || '—';
-  el.querySelector('.duracao').textContent = row.duracao || '—';
-  el.querySelector('.timestamp').textContent = row.timestamp || '—';
-
-  const temPaciente = (row.paciente_nome || '').trim() !== '';
-  if (row.tipo === 'Abertura de horário extra' && temPaciente) {
-    const alerta = document.createElement('div');
-    alerta.className = 'mx-5 mb-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2';
-    alerta.innerHTML = `<span>⛔</span> <span>Paciente específico informado (<strong>${row.paciente_nome}</strong>) — não executar. Deixar pendente.</span>`;
-    el.querySelector('.details').before(alerta);
+  const temPaciente=(row.paciente_nome||'').trim()!=='';
+  if(row.tipo==='Abertura de horário extra'&&temPaciente){
+    const a=document.createElement('div');
+    a.className='mx-5 mb-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 flex items-center gap-2';
+    a.innerHTML=`<span>⛔</span><span>Paciente específico: <strong>${row.paciente_nome}</strong> — não executar. Deixar pendente.</span>`;
+    el.querySelector('.details').before(a);
   }
-  const tiposMapeados = ['Abertura de horário extra'];
-  if (!tiposMapeados.includes(row.tipo)) {
-    const alerta = document.createElement('div');
-    alerta.className = 'mx-5 mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700 flex items-center gap-2';
-    alerta.innerHTML = `<span>⚠️</span> <span>Fluxo de execução ainda não mapeado para este tipo — requer execução manual.</span>`;
-    el.querySelector('.details').before(alerta);
+  if(!['Abertura de horário extra'].includes(row.tipo)){
+    const a=document.createElement('div');
+    a.className='mx-5 mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-700 flex items-center gap-2';
+    a.innerHTML='<span>⚠️</span><span>Fluxo ainda não mapeado — executar manualmente.</span>';
+    el.querySelector('.details').before(a);
   }
 
-  const resumo = el.querySelector('.dados-resumo');
-  resumo.innerHTML = buildResumoHTML(row);
-  if (executed.has(row._key)) {
-    el.style.opacity = '0.6';
-    el.querySelector('.btn-done').textContent = '✓ Executado';
-    el.querySelector('.btn-done').classList.add('bg-green-50', 'text-green-600', 'border-green-200');
+  el.querySelector('.dados-resumo').innerHTML=buildResumoHTML(row);
+  if(executed.has(row._key)){
+    el.style.opacity='0.6';
+    el.querySelector('.btn-done').textContent='✓ Executado';
+    el.querySelector('.btn-done').classList.add('bg-green-50','text-green-600','border-green-200');
   }
-  el.querySelector('.btn-toggle').addEventListener('click', () => {
-    const d = el.querySelector('.details');
-    const btn = el.querySelector('.btn-toggle');
-    d.classList.toggle('hidden');
-    btn.textContent = d.classList.contains('hidden') ? '▼' : '▲';
+  el.querySelector('.btn-toggle').addEventListener('click',()=>{
+    const d=el.querySelector('.details'),btn=el.querySelector('.btn-toggle');
+    d.classList.toggle('hidden');btn.textContent=d.classList.contains('hidden')?'▼':'▲';
   });
-  el.querySelector('.btn-done').addEventListener('click', () => markDone(row._key, el));
-  el.querySelector('.btn-ai').addEventListener('click', () => interpretRow(row, el));
-  el.querySelector('.btn-ai-retry').addEventListener('click', () => interpretRow(row, el));
-  el.querySelector('.btn-raw').addEventListener('click', () => {
-    const section = el.querySelector('.raw-section');
-    section.classList.toggle('hidden');
-    const rawDiv = section.querySelector('.raw-data');
-    if (rawDiv.innerHTML === '') {
-      const headers = ['Carimbo','E-mail','Nome','CPF','Especialidade','Plataforma','Duração','Tipo','Paciente?','Pac.Nome','Pac.CPF','Ab.Data','Ab.Ini','Ab.Fim','Fc.DtIni','Fc.DtFim','Fc.HrIni','Fc.HrFim','Obs','Rep.Data','Rep.Ini','Rep.Fim','Fs.DtIni','Fs.DtFim','Fs.HrIni','Fs.HrFim','Fs.Just','Alt.DiaAtual','Alt.DiasManter','Alt.Horarios','Alt.Data','Add.Dias','Add.Horarios','Add.Data','Saida.Razao','Saida.Data','Dur.Nova','Dur.Data','EmailDisp','Analista','Status','Aprovado','Exec.Data','Exec.Hora','SLA','SLA Status','Alerta','EmailAnd'];
-      rawDiv.innerHTML = row._raw.map((v, i) => v ? `<div><span class="text-gray-400">${headers[i]||i}:</span> ${v}</div>` : '').filter(Boolean).join('');
+  el.querySelector('.btn-done').addEventListener('click',()=>markDone(row._key,el));
+  el.querySelector('.btn-ai').addEventListener('click',()=>interpretRow(row,el));
+  el.querySelector('.btn-ai-retry').addEventListener('click',()=>interpretRow(row,el));
+  el.querySelector('.btn-raw').addEventListener('click',()=>{
+    const s=el.querySelector('.raw-section');s.classList.toggle('hidden');
+    const rd=s.querySelector('.raw-data');
+    if(rd.innerHTML===''){
+      const h=['Carimbo','E-mail','Nome','CPF','Especialidade','Plataforma','Duração','Tipo','Paciente?','Pac.Nome','Pac.CPF','Ab.Data','Ab.Ini','Ab.Fim','Fc.DtIni','Fc.DtFim','Fc.HrIni','Fc.HrFim','Obs','Rep.Data','Rep.Ini','Rep.Fim','Fs.DtIni','Fs.DtFim','Fs.HrIni','Fs.HrFim','Fs.Just','Alt.DiaAtual','Alt.DiasManter','Alt.Horarios','Alt.Data','Add.Dias','Add.Horarios','Add.Data','Saida.Razao','Saida.Data','Dur.Nova','Dur.Data','EmailDisp','Analista','Status','Aprovado','Exec.Data','Exec.Hora','SLA','SLA Status','Alerta','EmailAnd'];
+      rd.innerHTML=row._raw.map((v,i)=>v?`<div><span class="text-gray-400">${h[i]||i}:</span> ${v}</div>`:'').filter(Boolean).join('');
     }
-    el.querySelector('.btn-raw').textContent = section.classList.contains('hidden') ? 'Ver dados brutos ▾' : 'Ocultar dados brutos ▴';
+    el.querySelector('.btn-raw').textContent=s.classList.contains('hidden')?'Ver dados brutos ▾':'Ocultar dados brutos ▴';
   });
   return el;
 }
 
-function buildResumoHTML(row) {
-  const lines = [];
-  const add = (label, val) => val ? lines.push(`<div><span class="font-medium text-gray-700">${label}:</span> ${val}</div>`) : null;
-  add('CPF', row.cpf); add('E-mail', row.email); add('Analista', row.analista || '—'); add('SLA', row.sla || '—');
-  const t = row.tipo;
-  if (t === 'Abertura de horário extra') {
-    add('Data de abertura', row.ab_data); add('Horário', `${row.ab_inicio} → ${row.ab_fim}`);
-    if (row.paciente_nome) add('Paciente', `${row.paciente_nome} (${row.paciente_cpf})`);
-  } else if (t === 'Fechamento de agenda com reposição') {
-    add('Período fechamento', `${row.fc_data_ini} a ${row.fc_data_fim}`);
-    add('Horário fechamento', `${row.fc_hora_ini} → ${row.fc_hora_fim}`);
-    add('Data reposição', row.fc_rep_data); add('Horário reposição', `${row.fc_rep_ini} → ${row.fc_rep_fim}`);
-    add('Observação', row.obs);
-  } else if (t === 'Fechamento de agenda sem reposição') {
-    add('Período fechamento', `${row.fs_data_ini} a ${row.fs_data_fim}`);
-    add('Horário fechamento', `${row.fs_hora_ini} → ${row.fs_hora_fim}`);
-    add('Justificativa', row.fs_just);
-  } else if (t === 'Adicionar novos horários à agenda fixa') {
-    add('Dias a incluir', row.add_dias); add('Horários por dia', row.add_horarios); add('Vigência a partir de', row.add_data);
-  } else if (t === 'Solicitação de alteração da agenda fixa') {
-    add('Dias atuais', row.alt_dias_atual); add('Dias a manter', row.alt_dias_manter);
-    add('Novos horários', row.alt_horarios); add('Vigência a partir de', row.alt_data);
-  } else if (t === 'Mudança de duração de atendimento') {
-    add('Nova duração', row.dur_nova); add('Vigência a partir de', row.dur_data);
-  }
+function buildResumoHTML(row){
+  const lines=[],add=(l,v)=>v?lines.push(`<div><span class="font-medium text-gray-700">${l}:</span> ${v}</div>`):null;
+  add('CPF',row.cpf);add('E-mail',row.email);add('Analista',row.analista||'—');add('SLA',row.sla||'—');
+  const t=row.tipo;
+  if(t==='Abertura de horário extra'){add('Data',row.ab_data);add('Horário',`${row.ab_inicio} → ${row.ab_fim}`);if(row.paciente_nome)add('Paciente',`${row.paciente_nome}`);}
+  else if(t==='Fechamento de agenda com reposição'){add('Período',`${row.fc_data_ini} a ${row.fc_data_fim}`);add('Hor. fechamento',`${row.fc_hora_ini} → ${row.fc_hora_fim}`);add('Data reposição',row.fc_rep_data);add('Hor. reposição',`${row.fc_rep_ini} → ${row.fc_rep_fim}`);add('Obs',row.obs);}
+  else if(t==='Fechamento de agenda sem reposição'){add('Período',`${row.fs_data_ini} a ${row.fs_data_fim}`);add('Hor. fechamento',`${row.fs_hora_ini} → ${row.fs_hora_fim}`);add('Justificativa',row.fs_just);}
+  else if(t==='Adicionar novos horários à agenda fixa'){add('Dias',row.add_dias);add('Horários',row.add_horarios);add('Vigência',row.add_data);}
+  else if(t==='Solicitação de alteração da agenda fixa'){add('Dias atuais',row.alt_dias_atual);add('Manter',row.alt_dias_manter);add('Novos horários',row.alt_horarios);add('Vigência',row.alt_data);}
+  else if(t==='Mudança de duração de atendimento'){add('Nova duração',row.dur_nova);add('Vigência',row.dur_data);}
   return lines.join('');
 }
 
-async function interpretRow(row, el) {
-  if (!apiKey) { alert('Informe a API Key Anthropic primeiro.'); return; }
-  const ph = el.querySelector('.ai-placeholder');
-  const ld = el.querySelector('.ai-loading');
-  const rs = el.querySelector('.ai-result');
-  const er = el.querySelector('.ai-error');
-  ph.classList.add('hidden'); ld.classList.remove('hidden'); rs.classList.add('hidden'); er.classList.add('hidden');
-  el.querySelector('.details').classList.remove('hidden');
-  el.querySelector('.btn-toggle').textContent = '▲';
-  try {
-    const prompt = buildPrompt(row);
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
-        messages: [{ role: 'user', content: prompt }],
-      }),
+async function interpretRow(row,el){
+  if(!apiKey){alert('Informe a API Key Anthropic primeiro.');return;}
+  const ph=el.querySelector('.ai-placeholder'),ld=el.querySelector('.ai-loading'),rs=el.querySelector('.ai-result'),er=el.querySelector('.ai-error');
+  ph.classList.add('hidden');ld.classList.remove('hidden');rs.classList.add('hidden');er.classList.add('hidden');
+  el.querySelector('.details').classList.remove('hidden');el.querySelector('.btn-toggle').textContent='▲';
+  try{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1024,messages:[{role:'user',content:buildPrompt(row)}]}),
     });
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(err.error?.message || `HTTP ${response.status}`);
-    }
-    const data = await response.json();
-    const text = data.content?.[0]?.text || '(sem resposta)';
-    ld.classList.add('hidden'); rs.classList.remove('hidden');
-    rs.querySelector('.step-box').textContent = text;
-  } catch (e) {
-    ld.classList.add('hidden'); er.classList.remove('hidden');
-    er.textContent = `Erro: ${e.message}`;
-    ph.classList.remove('hidden');
+    if(!resp.ok){const e=await resp.json().catch(()=>({}));throw new Error(e.error?.message||`HTTP ${resp.status}`);}
+    const data=await resp.json();
+    ld.classList.add('hidden');rs.classList.remove('hidden');
+    rs.querySelector('.step-box').textContent=data.content?.[0]?.text||'(sem resposta)';
+  }catch(e){
+    ld.classList.add('hidden');er.classList.remove('hidden');
+    er.textContent=`Erro: ${e.message}`;ph.classList.remove('hidden');
   }
 }
 
-function buildPrompt(row) {
-  const t = row.tipo;
-  if (t === 'Abertura de horário extra') return buildPromptAbertura(row);
+function buildPrompt(row){
+  const t=row.tipo;
+  if(t==='Abertura de horário extra')return buildPromptAbertura(row);
   return `Você é um analista de backoffice da Conexa Saúde.
-
-O tipo de solicitação "${t}" ainda não teve seu fluxo de execução mapeado no Backoffice.
-
-Dados da solicitação:
-- Médico: ${row.nome}
-- CPF: ${row.cpf}
-- Especialidade: ${row.especialidade}
-- Plataforma: ${row.plataforma}
-- Duração: ${row.duracao}
-
-⚠️ Informe ao analista que este tipo de solicitação precisa ser avaliado manualmente até que o fluxo seja documentado. Deixe como PENDENTE.`;
+O tipo "${t}" ainda não teve fluxo mapeado. Dados: Médico: ${row.nome}, CPF: ${row.cpf}.
+⚠️ Deixar como PENDENTE até o fluxo ser documentado.`;
 }
 
-function buildPromptAbertura(row) {
-  const temPaciente = (row.paciente_nome || '').trim() !== '';
-  const duracaoNum  = (row.duracao || '').replace(/[^0-9]/g, '');
-  if (temPaciente) {
-    return `Você é um analista de backoffice da Conexa Saúde.
-
-⛔ SOLICITAÇÃO BLOQUEADA — NÃO EXECUTAR
-
-Motivo: o campo "Nome completo do paciente" está preenchido com "${row.paciente_nome}".
-Regra: aberturas de horário extra com paciente específico não devem ser executadas pelo analista.
-
-Ação: deixar esta solicitação como PENDENTE e sinalizar para revisão manual pela equipe responsável.`;
-  }
-  return `Você é um analista de backoffice da Conexa Saúde.
-
-Gere um passo a passo numerado para executar a solicitação abaixo. Use exatamente os dados fornecidos. Seja direto e objetivo.
+function buildPromptAbertura(row){
+  const temPaciente=(row.paciente_nome||'').trim()!=='';
+  const dn=(row.duracao||'').replace(/[^0-9]/g,'');
+  if(temPaciente)return `⛔ BLOQUEADO: campo "Nome completo do paciente" preenchido com "${row.paciente_nome}". NÃO executar. Deixar PENDENTE.`;
+  return `Você é um analista de backoffice da Conexa Saúde. Gere passo a passo numerado para executar a solicitação abaixo. Use exatamente os dados. Seja direto.
 
 TIPO: Abertura de horário extra
 MÉDICO: ${row.nome}
 CPF: ${row.cpf}
 ESPECIALIDADE: ${row.especialidade}
 PLATAFORMA: ${row.plataforma}
-DURAÇÃO DA CONSULTA: ${row.duracao} (${duracaoNum} minutos)
-DATA DE ABERTURA: ${row.ab_data}
+DURAÇÃO: ${row.duracao} (${dn} minutos)
+DATA: ${row.ab_data}
 HORA INICIAL: ${row.ab_inicio}
 HORA FINAL: ${row.ab_fim}
 
-FLUXO REAL DO BACKOFFICE CONEXA SAÚDE — siga exatamente:
-
+FLUXO REAL DO BACKOFFICE CONEXA SAÚDE:
 1. Acesse: https://backoffice.conexasaude.com.br/usuario/profissionais
 2. No campo de busca, pesquise pelo CPF "${row.cpf}".
 3. Verifique os resultados:
-   - Se nenhum resultado aparecer → PENDENTE: profissional não encontrado.
-   - Se o profissional estiver com status INATIVO → NÃO executar, deixar PENDENTE.
-   - Se houver MAIS DE 1 perfil com status ATIVO → NÃO executar, deixar PENDENTE para revisão manual.
-   - Se houver exatamente 1 perfil ATIVO → prosseguir.
-4. Na linha do profissional ativo, clique nos ⋮ (três pontinhos) à direita.
-5. No menu suspenso, clique em "Agenda".
-6. Na página de agenda, clique na aba "Horário adicional".
-7. Preencha os campos:
-   - Tempo de atendimento (minutos): ${duracaoNum}
+   - Nenhum resultado → PENDENTE: profissional não encontrado.
+   - Status INATIVO → NÃO executar, PENDENTE.
+   - Mais de 1 perfil ATIVO → NÃO executar, PENDENTE para revisão manual.
+   - Exatamente 1 perfil ATIVO → prosseguir.
+4. Clique nos ⋮ (três pontinhos) na linha do profissional.
+5. Clique em "Agenda".
+6. Clique na aba "Horário adicional".
+7. Preencha:
+   - Tempo de atendimento (minutos): ${dn}
    - Antecedência de agendamento (horas): 00:00
    - Data: ${row.ab_data}
    - Hora inicial: ${row.ab_inicio}
    - Hora final: ${row.ab_fim}
 8. Clique em "Programar".
-9. Confirme que o horário apareceu na lista "Horários programados" abaixo do formulário.
-10. Volte para a planilha Google Sheets da solicitação.
-11. Na linha desta solicitação, localize a coluna AO ("Status") e preencha com: Aprovado
-    → Isso dispara automaticamente o e-mail de confirmação para o médico.
-12. Marque a solicitação como EXECUTADA no painel.
+9. Confirme que o horário apareceu em "Horários programados".
+10. Volte à planilha Google Sheets.
+11. Coluna AO ("Status") → preencha: Aprovado (dispara e-mail ao médico).
+12. Marque como EXECUTADO no painel.
 
-⚠️ ATENÇÃO: Só preencha "Aprovado" na coluna AO após confirmar que o horário foi programado com sucesso no Backoffice. O preenchimento dispara e-mail automático ao médico.`;
+⚠️ Só preencha "Aprovado" na coluna AO após confirmar o horário no Backoffice.`;
 }
 
-async function interpretAll() {
-  const rows = allRows.filter(r => r.aprovado === 'SIM');
-  for (const row of rows) {
-    if (executed.has(row._key)) continue;
-    const el = document.querySelector(`[data-key="${row._key}"]`);
-    if (el) await interpretRow(row, el);
+async function interpretAll(){
+  const rows=allRows.filter(r=>r.aprovado==='SIM');
+  for(const row of rows){if(executed.has(row._key))continue;const el=document.querySelector(`[data-key="${row._key}"]`);if(el)await interpretRow(row,el);}
+}
+
+function markDone(key,el){
+  executed.add(key);localStorage.setItem('executed',JSON.stringify([...executed]));
+  el.style.opacity='0.6';
+  const btn=el.querySelector('.btn-done');btn.textContent='✓ Executado';
+  btn.classList.add('bg-green-50','text-green-600','border-green-200');
+}
+
+function setState(s,msg){
+  ['state-loading','state-empty','state-error','cards-container'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+  if(s==='loading')document.getElementById('state-loading').classList.remove('hidden');
+  else if(s==='empty')document.getElementById('state-empty').classList.remove('hidden');
+  else if(s==='error'){document.getElementById('state-error').classList.remove('hidden');document.getElementById('err-msg').textContent=msg;}
+  else if(s==='cards')document.getElementById('cards-container').classList.remove('hidden');
+}
+
+function updateBadge(n){const b=document.getElementById('badge-total');b.textContent=`${n} aprovada${n!==1?'s':''}`;b.classList.remove('hidden');}
+function tipoBadgeClass(t){if(t?.includes('Abertura'))return 'badge-abertura';if(t?.includes('Fechamento'))return 'badge-fechamento';if(t?.includes('Adicionar'))return 'badge-adicionar';if(t?.includes('alteração')||t?.includes('Alteração'))return 'badge-alteracao';if(t?.includes('duração')||t?.includes('Mudança'))return 'badge-duracao';return 'bg-gray-100 text-gray-600';}
+function statusBadgeClass(s){if(!s)return 'bg-gray-100 text-gray-500';const v=s.toLowerCase();if(v.includes('aprovado'))return 'badge-aprovado';if(v.includes('reprovado'))return 'badge-reprovado';if(v.includes('andamento'))return 'badge-andamento';return 'bg-gray-100 text-gray-500';}
+
+function parseCSV(text){
+  const rows=[];let row=[],field='',inQ=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(inQ){if(c==='"'&&text[i+1]==='"'){field+='"';i++;}else if(c==='"')inQ=false;else field+=c;}
+    else{if(c==='"'){inQ=true;}else if(c===','){row.push(field);field='';}
+    else if(c==='\n'||(c==='\r'&&text[i+1]==='\n')){if(c==='\r')i++;row.push(field);field='';rows.push(row);row=[];}
+    else field+=c;}
   }
-}
-
-function markDone(key, el) {
-  executed.add(key);
-  localStorage.setItem('executed', JSON.stringify([...executed]));
-  el.style.opacity = '0.6';
-  const btn = el.querySelector('.btn-done');
-  btn.textContent = '✓ Executado';
-  btn.classList.add('bg-green-50', 'text-green-600', 'border-green-200');
-}
-
-function setState(s, msg) {
-  document.getElementById('state-loading').classList.add('hidden');
-  document.getElementById('state-empty').classList.add('hidden');
-  document.getElementById('state-error').classList.add('hidden');
-  document.getElementById('cards-container').classList.add('hidden');
-  if (s === 'loading') document.getElementById('state-loading').classList.remove('hidden');
-  else if (s === 'empty')  document.getElementById('state-empty').classList.remove('hidden');
-  else if (s === 'error')  { document.getElementById('state-error').classList.remove('hidden'); document.getElementById('err-msg').textContent = msg; }
-  else if (s === 'cards')  document.getElementById('cards-container').classList.remove('hidden');
-}
-
-function updateBadge(n) {
-  const b = document.getElementById('badge-total');
-  b.textContent = `${n} aprovada${n !== 1 ? 's' : ''}`;
-  b.classList.remove('hidden');
-}
-
-function tipoBadgeClass(tipo) {
-  if (tipo?.includes('Abertura')) return 'badge-abertura';
-  if (tipo?.includes('Fechamento')) return 'badge-fechamento';
-  if (tipo?.includes('Adicionar')) return 'badge-adicionar';
-  if (tipo?.includes('alteração') || tipo?.includes('Alteração')) return 'badge-alteracao';
-  if (tipo?.includes('duração') || tipo?.includes('Mudança')) return 'badge-duracao';
-  return 'bg-gray-100 text-gray-600';
-}
-
-function statusBadgeClass(status) {
-  if (!status) return 'bg-gray-100 text-gray-500';
-  const s = status.toLowerCase();
-  if (s.includes('aprovado')) return 'badge-aprovado';
-  if (s.includes('reprovado')) return 'badge-reprovado';
-  if (s.includes('andamento')) return 'badge-andamento';
-  return 'bg-gray-100 text-gray-500';
-}
-
-function parseCSV(text) {
-  const rows = [];
-  let row = [], field = '', inQ = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQ) {
-      if (c === '"' && text[i+1] === '"') { field += '"'; i++; }
-      else if (c === '"') inQ = false;
-      else field += c;
-    } else {
-      if (c === '"') { inQ = true; }
-      else if (c === ',') { row.push(field); field = ''; }
-      else if (c === '\n' || (c === '\r' && text[i+1] === '\n')) {
-        if (c === '\r') i++;
-        row.push(field); field = '';
-        rows.push(row); row = [];
-      } else field += c;
-    }
-  }
-  if (field || row.length) { row.push(field); rows.push(row); }
+  if(field||row.length){row.push(field);rows.push(row);}
   return rows;
 }
 </script>
