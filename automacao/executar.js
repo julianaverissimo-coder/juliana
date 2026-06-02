@@ -183,12 +183,13 @@ async function executar() {
     inf('👉 Agora vá à planilha e preencha a coluna AO com "Aprovado"');
     sep();
 
-    await page.waitForTimeout(20000); // mantém aberto 20s para conferência
+    inf('Pressione ENTER para fechar o navegador...');
+    await new Promise(r => process.stdin.once('data', r));
 
   } catch (e) {
     err(`Erro: ${e.message}`);
-    inf('Navegador mantido aberto para verificação. Feche manualmente.');
-    await page.waitForTimeout(30000);
+    inf('Pressione ENTER para fechar...');
+    await new Promise(r => process.stdin.once('data', r));
   } finally {
     await context.close();
   }
