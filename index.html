@@ -149,7 +149,7 @@
 </template>
 
 <script>
-const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTD4LFltg_b14z362ci9aui4oE-gjHxLJ4b9FUm6Hj6KYcHvQQYMskaJdnJfrftc-7zYoMCDYdyOmG1/pub?gid=1722470876&single=true&output=csv';
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8/gviz/tq?tqx=out:csv&gid=1722470876';
 
 const COL = {
   timestamp:0,email:1,nome:2,cpf:3,especialidade:4,plataforma:5,duracao:6,tipo:7,
@@ -284,7 +284,7 @@ function buildResumoHTML(row){
   const lines=[],add=(l,v)=>v?lines.push(`<div><span class="font-medium text-gray-700">${l}:</span> ${v}</div>`):null;
   add('CPF',row.cpf);add('E-mail',row.email);add('Analista',row.analista||'—');add('SLA',row.sla||'—');
   const t=row.tipo;
-  if(t==='Abertura de horário extra'){add('Data',row.ab_data);add('Horário',`${row.ab_inicio} → ${row.ab_fim}`);if(row.paciente_nome)add('Paciente',`${row.paciente_nome}`);}
+  if(t==='Abertura de horário extra'){add('Data',row.ab_data);add('Horário',`${row.ab_inicio} → ${row.ab_fim}`);if(row.paciente_nome)add('Paciente',row.paciente_nome);}
   else if(t==='Fechamento de agenda com reposição'){add('Período',`${row.fc_data_ini} a ${row.fc_data_fim}`);add('Hor. fechamento',`${row.fc_hora_ini} → ${row.fc_hora_fim}`);add('Data reposição',row.fc_rep_data);add('Hor. reposição',`${row.fc_rep_ini} → ${row.fc_rep_fim}`);add('Obs',row.obs);}
   else if(t==='Fechamento de agenda sem reposição'){add('Período',`${row.fs_data_ini} a ${row.fs_data_fim}`);add('Hor. fechamento',`${row.fs_hora_ini} → ${row.fs_hora_fim}`);add('Justificativa',row.fs_just);}
   else if(t==='Adicionar novos horários à agenda fixa'){add('Dias',row.add_dias);add('Horários',row.add_horarios);add('Vigência',row.add_data);}
@@ -318,7 +318,7 @@ function buildPrompt(row){
   const t=row.tipo;
   if(t==='Abertura de horário extra')return buildPromptAbertura(row);
   return `Você é um analista de backoffice da Conexa Saúde.
-O tipo "${t}" ainda não teve fluxo mapeado. Dados: Médico: ${row.nome}, CPF: ${row.cpf}.
+O tipo "${t}" ainda não teve fluxo mapeado. Médico: ${row.nome}, CPF: ${row.cpf}.
 ⚠️ Deixar como PENDENTE até o fluxo ser documentado.`;
 }
 
