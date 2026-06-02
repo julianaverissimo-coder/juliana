@@ -177,85 +177,33 @@
 </template>
 
 <script>
-// ─── CONFIG ──────────────────────────────────────────────────────────────────
 const SHEET_ID  = '1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8';
 const SHEET_GID = '1722470876';
 const CSV_URL   = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
 
-// Column indexes (0-based)
 const COL = {
-  timestamp:   0,
-  email:       1,
-  nome:        2,
-  cpf:         3,
-  especialidade: 4,
-  plataforma:  5,
-  duracao:     6,
-  tipo:        7,
-  paciente_q:  8,
-  paciente_nome: 9,
-  paciente_cpf: 10,
-  // Abertura horário extra
-  ab_data:     11,
-  ab_inicio:   12,
-  ab_fim:      13,
-  // Fechamento com reposição
-  fc_data_ini: 14,
-  fc_data_fim: 15,
-  fc_hora_ini: 16,
-  fc_hora_fim: 17,
-  obs:         18,
-  fc_rep_data: 19,
-  fc_rep_ini:  20,
-  fc_rep_fim:  21,
-  // Fechamento sem reposição
-  fs_data_ini: 22,
-  fs_data_fim: 23,
-  fs_hora_ini: 24,
-  fs_hora_fim: 25,
-  fs_just:     26,
-  // Alteração agenda fixa
-  alt_dias_atual: 27,
-  alt_dias_manter: 28,
-  alt_horarios:   29,
-  alt_data:       30,
-  // Adicionar à agenda fixa
-  add_dias:    31,
-  add_horarios: 32,
-  add_data:    33,
-  // Saída / mudança duração
-  saida_razao: 34,
-  saida_data:  35,
-  dur_nova:    36,
-  dur_data:    37,
-  // Controle
-  email_disp:  38,
-  analista:    39,
-  status:      40,
-  aprovado:    41, // ← "SIM" ou "NÃO"
-  exec_data:   42,
-  exec_hora:   43,
-  sla:         44,
-  sla_status:  45,
-  alerta:      46,
-  email_and:   47,
+  timestamp:   0, email: 1, nome: 2, cpf: 3, especialidade: 4, plataforma: 5, duracao: 6, tipo: 7,
+  paciente_q: 8, paciente_nome: 9, paciente_cpf: 10,
+  ab_data: 11, ab_inicio: 12, ab_fim: 13,
+  fc_data_ini: 14, fc_data_fim: 15, fc_hora_ini: 16, fc_hora_fim: 17, obs: 18,
+  fc_rep_data: 19, fc_rep_ini: 20, fc_rep_fim: 21,
+  fs_data_ini: 22, fs_data_fim: 23, fs_hora_ini: 24, fs_hora_fim: 25, fs_just: 26,
+  alt_dias_atual: 27, alt_dias_manter: 28, alt_horarios: 29, alt_data: 30,
+  add_dias: 31, add_horarios: 32, add_data: 33,
+  saida_razao: 34, saida_data: 35, dur_nova: 36, dur_data: 37,
+  email_disp: 38, analista: 39, status: 40, aprovado: 41,
+  exec_data: 42, exec_hora: 43, sla: 44, sla_status: 45, alerta: 46, email_and: 47,
 };
 
-// ─── STATE ────────────────────────────────────────────────────────────────────
-let allRows = [];      // parsed rows (objects)
+let allRows = [];
 let executed = new Set(JSON.parse(localStorage.getItem('executed') || '[]'));
 let apiKey = sessionStorage.getItem('conexa_api_key') || '';
 
-// ─── INIT ─────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
-  if (apiKey) {
-    document.getElementById('api-key').value = apiKey;
-    showKeyStatus();
-  }
+  if (apiKey) { document.getElementById('api-key').value = apiKey; showKeyStatus(); }
   loadSheet();
 });
 
-// ─── KEY ──────────────────────────────────────────────────────────────────────
 function saveKey() {
   apiKey = document.getElementById('api-key').value.trim();
   sessionStorage.setItem('conexa_api_key', apiKey);
@@ -267,7 +215,6 @@ function showKeyStatus() {
   setTimeout(() => s.classList.add('hidden'), 3000);
 }
 
-// ─── LOAD SHEET ───────────────────────────────────────────────────────────────
 async function loadSheet() {
   setState('loading');
   try {
@@ -276,15 +223,9 @@ async function loadSheet() {
     const text = await resp.text();
     const rows = parseCSV(text);
     if (rows.length < 2) throw new Error('Planilha vazia ou formato inválido');
-    const header = rows[0];
-    allRows = rows.slice(1)
-      .filter(r => r.length > COL.aprovado)
-      .map((r, i) => buildRow(r, i));
+    allRows = rows.slice(1).filter(r => r.length > COL.aprovado).map((r, i) => buildRow(r, i));
     const approved = allRows.filter(r => r.aprovado === 'SIM');
-    if (approved.length === 0) {
-      setState('empty');
-      return;
-    }
+    if (approved.length === 0) { setState('empty'); return; }
     setState('cards');
     renderCards();
     updateBadge(approved.length);
@@ -297,63 +238,28 @@ async function loadSheet() {
 function buildRow(r, i) {
   const g = (idx) => (r[idx] || '').trim();
   return {
-    _idx: i,
-    _key: `row_${i}`,
-    timestamp:    g(COL.timestamp),
-    email:        g(COL.email),
-    nome:         g(COL.nome),
-    cpf:          g(COL.cpf),
-    especialidade: g(COL.especialidade),
-    plataforma:   g(COL.plataforma),
-    duracao:      g(COL.duracao),
-    tipo:         g(COL.tipo),
-    paciente_q:   g(COL.paciente_q),
-    paciente_nome: g(COL.paciente_nome),
-    paciente_cpf: g(COL.paciente_cpf),
-    ab_data:      g(COL.ab_data),
-    ab_inicio:    g(COL.ab_inicio),
-    ab_fim:       g(COL.ab_fim),
-    fc_data_ini:  g(COL.fc_data_ini),
-    fc_data_fim:  g(COL.fc_data_fim),
-    fc_hora_ini:  g(COL.fc_hora_ini),
-    fc_hora_fim:  g(COL.fc_hora_fim),
-    obs:          g(COL.obs),
-    fc_rep_data:  g(COL.fc_rep_data),
-    fc_rep_ini:   g(COL.fc_rep_ini),
-    fc_rep_fim:   g(COL.fc_rep_fim),
-    fs_data_ini:  g(COL.fs_data_ini),
-    fs_data_fim:  g(COL.fs_data_fim),
-    fs_hora_ini:  g(COL.fs_hora_ini),
-    fs_hora_fim:  g(COL.fs_hora_fim),
-    fs_just:      g(COL.fs_just),
-    alt_dias_atual: g(COL.alt_dias_atual),
-    alt_dias_manter: g(COL.alt_dias_manter),
-    alt_horarios: g(COL.alt_horarios),
-    alt_data:     g(COL.alt_data),
-    add_dias:     g(COL.add_dias),
-    add_horarios: g(COL.add_horarios),
-    add_data:     g(COL.add_data),
-    saida_razao:  g(COL.saida_razao),
-    saida_data:   g(COL.saida_data),
-    dur_nova:     g(COL.dur_nova),
-    dur_data:     g(COL.dur_data),
-    analista:     g(COL.analista),
-    status:       g(COL.status),
-    aprovado:     g(COL.aprovado).toUpperCase(),
-    sla:          g(COL.sla),
-    alerta:       g(COL.alerta),
-    _raw:         r,
+    _idx: i, _key: `row_${i}`,
+    timestamp: g(COL.timestamp), email: g(COL.email), nome: g(COL.nome), cpf: g(COL.cpf),
+    especialidade: g(COL.especialidade), plataforma: g(COL.plataforma), duracao: g(COL.duracao), tipo: g(COL.tipo),
+    paciente_q: g(COL.paciente_q), paciente_nome: g(COL.paciente_nome), paciente_cpf: g(COL.paciente_cpf),
+    ab_data: g(COL.ab_data), ab_inicio: g(COL.ab_inicio), ab_fim: g(COL.ab_fim),
+    fc_data_ini: g(COL.fc_data_ini), fc_data_fim: g(COL.fc_data_fim), fc_hora_ini: g(COL.fc_hora_ini), fc_hora_fim: g(COL.fc_hora_fim), obs: g(COL.obs),
+    fc_rep_data: g(COL.fc_rep_data), fc_rep_ini: g(COL.fc_rep_ini), fc_rep_fim: g(COL.fc_rep_fim),
+    fs_data_ini: g(COL.fs_data_ini), fs_data_fim: g(COL.fs_data_fim), fs_hora_ini: g(COL.fs_hora_ini), fs_hora_fim: g(COL.fs_hora_fim), fs_just: g(COL.fs_just),
+    alt_dias_atual: g(COL.alt_dias_atual), alt_dias_manter: g(COL.alt_dias_manter), alt_horarios: g(COL.alt_horarios), alt_data: g(COL.alt_data),
+    add_dias: g(COL.add_dias), add_horarios: g(COL.add_horarios), add_data: g(COL.add_data),
+    saida_razao: g(COL.saida_razao), saida_data: g(COL.saida_data), dur_nova: g(COL.dur_nova), dur_data: g(COL.dur_data),
+    analista: g(COL.analista), status: g(COL.status), aprovado: g(COL.aprovado).toUpperCase(),
+    sla: g(COL.sla), alerta: g(COL.alerta), _raw: r,
   };
 }
 
-// ─── RENDER ───────────────────────────────────────────────────────────────────
 function renderCards() {
   const container = document.getElementById('cards-container');
   container.innerHTML = '';
   const filterTipo   = document.getElementById('filter-tipo').value;
   const filterMedico = document.getElementById('filter-medico').value.toLowerCase();
   const hideDone     = document.getElementById('filter-done').checked;
-
   const rows = allRows.filter(r => {
     if (r.aprovado !== 'SIM') return false;
     if (filterTipo && r.tipo !== filterTipo) return false;
@@ -361,7 +267,6 @@ function renderCards() {
     if (hideDone && executed.has(r._key)) return false;
     return true;
   });
-
   rows.forEach(row => container.appendChild(createCard(row)));
   updateBadge(rows.length);
 }
@@ -370,27 +275,19 @@ function createCard(row) {
   const tmpl = document.getElementById('card-template');
   const el = tmpl.content.cloneNode(true).firstElementChild;
 
-  // Badges
   el.querySelector('.badge-tipo').textContent = row.tipo;
   el.querySelector('.badge-tipo').className += ' ' + tipoBadgeClass(row.tipo);
-
   const bStatus = el.querySelector('.badge-status');
   bStatus.textContent = row.status || '—';
   bStatus.className += ' ' + statusBadgeClass(row.status);
-
   const bGestao = el.querySelector('.badge-gestao');
-  if (row.aprovado === 'SIM') {
-    bGestao.textContent = '✓ Aprovado Gestão';
-    bGestao.className += ' badge-sim';
-  }
-
+  if (row.aprovado === 'SIM') { bGestao.textContent = '✓ Aprovado Gestão'; bGestao.className += ' badge-sim'; }
   el.querySelector('.nome').textContent = row.nome || '(sem nome)';
   el.querySelector('.especialidade').textContent = row.especialidade || '—';
   el.querySelector('.plataforma').textContent = row.plataforma || '—';
   el.querySelector('.duracao').textContent = row.duracao || '—';
   el.querySelector('.timestamp').textContent = row.timestamp || '—';
 
-  // Alerta de bloqueio automático para abertura com paciente específico
   const temPaciente = (row.paciente_nome || '').trim() !== '';
   if (row.tipo === 'Abertura de horário extra' && temPaciente) {
     const alerta = document.createElement('div');
@@ -398,8 +295,6 @@ function createCard(row) {
     alerta.innerHTML = `<span>⛔</span> <span>Paciente específico informado (<strong>${row.paciente_nome}</strong>) — não executar. Deixar pendente.</span>`;
     el.querySelector('.details').before(alerta);
   }
-
-  // Alerta para tipos sem fluxo mapeado
   const tiposMapeados = ['Abertura de horário extra'];
   if (!tiposMapeados.includes(row.tipo)) {
     const alerta = document.createElement('div');
@@ -408,33 +303,22 @@ function createCard(row) {
     el.querySelector('.details').before(alerta);
   }
 
-  // Dados resumo
   const resumo = el.querySelector('.dados-resumo');
   resumo.innerHTML = buildResumoHTML(row);
-
-  // Done badge
   if (executed.has(row._key)) {
     el.style.opacity = '0.6';
     el.querySelector('.btn-done').textContent = '✓ Executado';
     el.querySelector('.btn-done').classList.add('bg-green-50', 'text-green-600', 'border-green-200');
   }
-
-  // Events
   el.querySelector('.btn-toggle').addEventListener('click', () => {
     const d = el.querySelector('.details');
     const btn = el.querySelector('.btn-toggle');
     d.classList.toggle('hidden');
     btn.textContent = d.classList.contains('hidden') ? '▼' : '▲';
   });
-
   el.querySelector('.btn-done').addEventListener('click', () => markDone(row._key, el));
-
-  const btnAI = el.querySelector('.btn-ai');
-  btnAI.addEventListener('click', () => interpretRow(row, el));
-
-  const btnRetry = el.querySelector('.btn-ai-retry');
-  btnRetry.addEventListener('click', () => interpretRow(row, el));
-
+  el.querySelector('.btn-ai').addEventListener('click', () => interpretRow(row, el));
+  el.querySelector('.btn-ai-retry').addEventListener('click', () => interpretRow(row, el));
   el.querySelector('.btn-raw').addEventListener('click', () => {
     const section = el.querySelector('.raw-section');
     section.classList.toggle('hidden');
@@ -445,68 +329,46 @@ function createCard(row) {
     }
     el.querySelector('.btn-raw').textContent = section.classList.contains('hidden') ? 'Ver dados brutos ▾' : 'Ocultar dados brutos ▴';
   });
-
   return el;
 }
 
 function buildResumoHTML(row) {
   const lines = [];
   const add = (label, val) => val ? lines.push(`<div><span class="font-medium text-gray-700">${label}:</span> ${val}</div>`) : null;
-
-  add('CPF', row.cpf);
-  add('E-mail', row.email);
-  add('Analista', row.analista || '—');
-  add('SLA', row.sla || '—');
-
+  add('CPF', row.cpf); add('E-mail', row.email); add('Analista', row.analista || '—'); add('SLA', row.sla || '—');
   const t = row.tipo;
   if (t === 'Abertura de horário extra') {
-    add('Data de abertura', row.ab_data);
-    add('Horário', `${row.ab_inicio} → ${row.ab_fim}`);
-    if (row.paciente_q === 'Sim' || row.paciente_nome) {
-      add('Paciente', `${row.paciente_nome} (${row.paciente_cpf})`);
-    }
+    add('Data de abertura', row.ab_data); add('Horário', `${row.ab_inicio} → ${row.ab_fim}`);
+    if (row.paciente_nome) add('Paciente', `${row.paciente_nome} (${row.paciente_cpf})`);
   } else if (t === 'Fechamento de agenda com reposição') {
     add('Período fechamento', `${row.fc_data_ini} a ${row.fc_data_fim}`);
     add('Horário fechamento', `${row.fc_hora_ini} → ${row.fc_hora_fim}`);
-    add('Data reposição', row.fc_rep_data);
-    add('Horário reposição', `${row.fc_rep_ini} → ${row.fc_rep_fim}`);
+    add('Data reposição', row.fc_rep_data); add('Horário reposição', `${row.fc_rep_ini} → ${row.fc_rep_fim}`);
     add('Observação', row.obs);
   } else if (t === 'Fechamento de agenda sem reposição') {
     add('Período fechamento', `${row.fs_data_ini} a ${row.fs_data_fim}`);
     add('Horário fechamento', `${row.fs_hora_ini} → ${row.fs_hora_fim}`);
     add('Justificativa', row.fs_just);
   } else if (t === 'Adicionar novos horários à agenda fixa') {
-    add('Dias a incluir', row.add_dias);
-    add('Horários por dia', row.add_horarios);
-    add('Vigência a partir de', row.add_data);
+    add('Dias a incluir', row.add_dias); add('Horários por dia', row.add_horarios); add('Vigência a partir de', row.add_data);
   } else if (t === 'Solicitação de alteração da agenda fixa') {
-    add('Dias atuais', row.alt_dias_atual);
-    add('Dias a manter', row.alt_dias_manter);
-    add('Novos horários', row.alt_horarios);
-    add('Vigência a partir de', row.alt_data);
+    add('Dias atuais', row.alt_dias_atual); add('Dias a manter', row.alt_dias_manter);
+    add('Novos horários', row.alt_horarios); add('Vigência a partir de', row.alt_data);
   } else if (t === 'Mudança de duração de atendimento') {
-    add('Nova duração', row.dur_nova);
-    add('Vigência a partir de', row.dur_data);
+    add('Nova duração', row.dur_nova); add('Vigência a partir de', row.dur_data);
   }
   return lines.join('');
 }
 
-// ─── AI ───────────────────────────────────────────────────────────────────────
 async function interpretRow(row, el) {
   if (!apiKey) { alert('Informe a API Key Anthropic primeiro.'); return; }
   const ph = el.querySelector('.ai-placeholder');
   const ld = el.querySelector('.ai-loading');
   const rs = el.querySelector('.ai-result');
   const er = el.querySelector('.ai-error');
-  ph.classList.add('hidden');
-  ld.classList.remove('hidden');
-  rs.classList.add('hidden');
-  er.classList.add('hidden');
-
-  // Make details visible
+  ph.classList.add('hidden'); ld.classList.remove('hidden'); rs.classList.add('hidden'); er.classList.add('hidden');
   el.querySelector('.details').classList.remove('hidden');
   el.querySelector('.btn-toggle').textContent = '▲';
-
   try {
     const prompt = buildPrompt(row);
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -529,12 +391,10 @@ async function interpretRow(row, el) {
     }
     const data = await response.json();
     const text = data.content?.[0]?.text || '(sem resposta)';
-    ld.classList.add('hidden');
-    rs.classList.remove('hidden');
+    ld.classList.add('hidden'); rs.classList.remove('hidden');
     rs.querySelector('.step-box').textContent = text;
   } catch (e) {
-    ld.classList.add('hidden');
-    er.classList.remove('hidden');
+    ld.classList.add('hidden'); er.classList.remove('hidden');
     er.textContent = `Erro: ${e.message}`;
     ph.classList.remove('hidden');
   }
@@ -542,13 +402,7 @@ async function interpretRow(row, el) {
 
 function buildPrompt(row) {
   const t = row.tipo;
-
-  // Apenas Abertura de horário extra tem fluxo mapeado
-  if (t === 'Abertura de horário extra') {
-    return buildPromptAbertura(row);
-  }
-
-  // Outros tipos: instrução genérica informando que o fluxo ainda não foi mapeado
+  if (t === 'Abertura de horário extra') return buildPromptAbertura(row);
   return `Você é um analista de backoffice da Conexa Saúde.
 
 O tipo de solicitação "${t}" ainda não teve seu fluxo de execução mapeado no Backoffice.
@@ -566,7 +420,6 @@ Dados da solicitação:
 function buildPromptAbertura(row) {
   const temPaciente = (row.paciente_nome || '').trim() !== '';
   const duracaoNum  = (row.duracao || '').replace(/[^0-9]/g, '');
-
   if (temPaciente) {
     return `Você é um analista de backoffice da Conexa Saúde.
 
@@ -577,7 +430,6 @@ Regra: aberturas de horário extra com paciente específico não devem ser execu
 
 Ação: deixar esta solicitação como PENDENTE e sinalizar para revisão manual pela equipe responsável.`;
   }
-
   return `Você é um analista de backoffice da Conexa Saúde.
 
 Gere um passo a passo numerado para executar a solicitação abaixo. Use exatamente os dados fornecidos. Seja direto e objetivo.
@@ -620,24 +472,6 @@ FLUXO REAL DO BACKOFFICE CONEXA SAÚDE — siga exatamente:
 ⚠️ ATENÇÃO: Só preencha "Aprovado" na coluna AO após confirmar que o horário foi programado com sucesso no Backoffice. O preenchimento dispara e-mail automático ao médico.`;
 }
 
-function buildResumoTexto(row) {
-  const t = row.tipo;
-  if (t === 'Abertura de horário extra') {
-    return `- Data: ${row.ab_data}\n- Horário: ${row.ab_inicio} → ${row.ab_fim}${row.paciente_nome ? `\n- Paciente específico: ${row.paciente_nome} (CPF: ${row.paciente_cpf})` : ''}`;
-  } else if (t === 'Fechamento de agenda com reposição') {
-    return `- Período de fechamento: ${row.fc_data_ini} a ${row.fc_data_fim}\n- Horário fechado: ${row.fc_hora_ini} → ${row.fc_hora_fim}\n- Observação: ${row.obs}\n- Data de reposição: ${row.fc_rep_data}\n- Horário de reposição: ${row.fc_rep_ini} → ${row.fc_rep_fim}`;
-  } else if (t === 'Fechamento de agenda sem reposição') {
-    return `- Período de fechamento: ${row.fs_data_ini} a ${row.fs_data_fim}\n- Horário fechado: ${row.fs_hora_ini} → ${row.fs_hora_fim}\n- Justificativa: ${row.fs_just}`;
-  } else if (t === 'Adicionar novos horários à agenda fixa') {
-    return `- Dias a incluir: ${row.add_dias}\n- Horários por dia: ${row.add_horarios}\n- Vigência a partir de: ${row.add_data}`;
-  } else if (t === 'Solicitação de alteração da agenda fixa') {
-    return `- Dias atuais: ${row.alt_dias_atual}\n- Dias a manter: ${row.alt_dias_manter}\n- Novos horários: ${row.alt_horarios}\n- Vigência a partir de: ${row.alt_data}`;
-  } else if (t === 'Mudança de duração de atendimento') {
-    return `- Nova duração desejada: ${row.dur_nova}\n- Vigência a partir de: ${row.dur_data}`;
-  }
-  return '';
-}
-
 async function interpretAll() {
   const rows = allRows.filter(r => r.aprovado === 'SIM');
   for (const row of rows) {
@@ -647,7 +481,6 @@ async function interpretAll() {
   }
 }
 
-// ─── DONE ─────────────────────────────────────────────────────────────────────
 function markDone(key, el) {
   executed.add(key);
   localStorage.setItem('executed', JSON.stringify([...executed]));
@@ -657,7 +490,6 @@ function markDone(key, el) {
   btn.classList.add('bg-green-50', 'text-green-600', 'border-green-200');
 }
 
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
 function setState(s, msg) {
   document.getElementById('state-loading').classList.add('hidden');
   document.getElementById('state-empty').classList.add('hidden');
@@ -693,7 +525,6 @@ function statusBadgeClass(status) {
   return 'bg-gray-100 text-gray-500';
 }
 
-// ─── CSV PARSER ───────────────────────────────────────────────────────────────
 function parseCSV(text) {
   const rows = [];
   let row = [], field = '', inQ = false;
