@@ -12,7 +12,10 @@ const LOGIN = {
 const PLANILHA_CSV = 'https://docs.google.com/spreadsheets/d/1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8/gviz/tq?tqx=out:csv&gid=1722470876';
 const BACKOFFICE_URL = 'https://backoffice.conexasaude.com.br/usuario/profissionais';
 const PROCESSADOS_FILE = path.join(__dirname, 'processados.json');
-const INTERVALO_MS = 5 * 60 * 1000; // 5 minutos
+const INTERVALO_MS = 20 * 60 * 1000; // 20 minutos
+
+// Cole aqui a URL gerada pelo Apps Script (ver apps_script.gs)
+const APPS_SCRIPT_URL = '';
 
 // ─── LOG ──────────────────────────────────────────────────────────────────────
 const ok    = (m) => console.log(`\x1b[32m✓ ${m}\x1b[0m`);
@@ -109,6 +112,39 @@ function encontrarColuna(headers, nomes) {
 
 function limparCPF(v) {
   return (v || '').replace(/\D/g, '').trim();
+}
+
+// ─── MARCA APROVADO NA PLANILHA ───────────────────────────────────────────────
+function marcarAprovadoNaPlanilha(sol) {
+  return new Promise((resolve) => {
+    if (!APPS_SCRIPT_URL) {
+      aviso('APPS_SCRIPT_URL não configurada — coluna AO não será preenchida automaticamente.');
+      return resolve(false);
+    }
+    const corpo = JSON.stringify({ cpf: sol.cpf, data: sol.data, hora_ini: sol.hora_ini });
+    const url = new URL(APPS_SCRIPT_URL);
+    const options = {
+      hostname: url.hostname,
+      path: url.pathname + url.search,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(corpo) },
+      rejectUnauthorized: false,
+    };
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', d => data += d);
+      res.on('end', () => {
+        try {
+          const r = JSON.parse(data);
+          if (r.ok) { ok(`Planilha atualizada: ${r.msg}`); resolve(true); }
+          else { err(`Apps Script: ${r.msg}`); resolve(false); }
+        } catch { err('Resposta inválida do Apps Script'); resolve(false); }
+      });
+    });
+    req.on('error', (e) => { err(`Erro ao chamar Apps Script: ${e.message}`); resolve(false); });
+    req.write(corpo);
+    req.end();
+  });
 }
 
 // ─── LÊ E FILTRA PLANILHA ─────────────────────────────────────────────────────
@@ -317,11 +353,13 @@ async function executarAbertura(sol) {
     ok(`SUCESSO! Horário ${sol.hora_ini}–${sol.hora_fim} de ${sol.data} programado!`);
     ok(`Médico: ${sol.medico || sol.cpf}`);
     sep();
-    aviso('👉 Vá à planilha e preencha a coluna AO com "Aprovado"');
-    sep();
 
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(3000);
     await context.close();
+
+    inf('Marcando "Aprovado" na planilha...');
+    await marcarAprovadoNaPlanilha(sol);
+
     return true;
 
   } catch (e) {
