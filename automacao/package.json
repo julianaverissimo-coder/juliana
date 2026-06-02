@@ -1,0 +1,13 @@
+{
+  "name": "conexa-agenda-automacao",
+  "version": "1.0.0",
+  "description": "Automação de agenda Conexa Saúde via Playwright",
+  "main": "executar.js",
+  "scripts": {
+    "start": "node executar.js",
+    "instalar": "npx playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.44.0"
+  }
+}

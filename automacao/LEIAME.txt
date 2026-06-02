@@ -1,0 +1,36 @@
+═══════════════════════════════════════════════════
+  AUTOMAÇÃO DE AGENDA — CONEXA SAÚDE
+═══════════════════════════════════════════════════
+
+PRÉ-REQUISITO: Node.js instalado
+  → Baixe em: https://nodejs.org (versão LTS)
+
+═══════════════════════════════════════════════════
+  COMO USAR — APENAS 2 COMANDOS
+═══════════════════════════════════════════════════
+
+1. Abra o terminal nesta pasta e rode:
+   npm install
+
+2. Depois rode:
+   node executar.js
+
+O navegador vai abrir automaticamente!
+Se pedir login, faça o login e pressione ENTER no terminal.
+
+═══════════════════════════════════════════════════
+  O QUE O SCRIPT FAZ AUTOMATICAMENTE
+═══════════════════════════════════════════════════
+
+✓ Abre o Backoffice
+✓ Busca o CPF do médico
+✓ Verifica se há 1 único perfil Ativo
+✓ Abre o menu ⋮ → Agenda → Horário adicional
+✓ Preenche: duração, antecedência, data, hora inicial e final
+✓ Clica em Programar
+✓ Confirma na lista de horários programados
+
+Após executar, você ainda precisa:
+→ Ir à planilha e preencher coluna AO com "Aprovado"
+
+═══════════════════════════════════════════════════
