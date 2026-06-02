@@ -1,6 +1,8 @@
 const { chromium } = require('playwright');
+const path = require('path');
+const os   = require('os');
 
-// ─── DADOS DA SOLICITAÇÃO (lidos da planilha) ─────────────────────────────────
+// ─── SOLICITAÇÃO (Alberto Tavares — planilha 01/06/2026) ──────────────────────
 const SOLICITACAO = {
   medico:      'Alberto Tavares de Araújo Freitas',
   cpf:         '09910245752',
@@ -12,151 +14,173 @@ const SOLICITACAO = {
 
 const BACKOFFICE_URL = 'https://backoffice.conexasaude.com.br/usuario/profissionais';
 
-// ─── CORES NO TERMINAL ────────────────────────────────────────────────────────
-const ok  = (msg) => console.log(`\x1b[32m✓ ${msg}\x1b[0m`);
-const err = (msg) => console.log(`\x1b[31m✗ ${msg}\x1b[0m`);
-const inf = (msg) => console.log(`\x1b[36mℹ ${msg}\x1b[0m`);
+// ─── PERFIL DO CHROME (usa sessão já logada) ──────────────────────────────────
+function chromePerfil() {
+  const u = os.homedir();
+  if (process.platform === 'win32')
+    return path.join(u, 'AppData', 'Local', 'Google', 'Chrome', 'User Data');
+  if (process.platform === 'darwin')
+    return path.join(u, 'Library', 'Application Support', 'Google', 'Chrome');
+  return path.join(u, '.config', 'google-chrome');
+}
+
+// ─── LOG COLORIDO ─────────────────────────────────────────────────────────────
+const ok  = (m) => console.log(`\x1b[32m✓ ${m}\x1b[0m`);
+const err = (m) => console.log(`\x1b[31m✗ ${m}\x1b[0m`);
+const inf = (m) => console.log(`\x1b[36mℹ ${m}\x1b[0m`);
+const sep = ()  => console.log('\x1b[90m─────────────────────────────────────\x1b[0m');
 
 async function executar() {
-  inf(`Iniciando automação para: ${SOLICITACAO.medico} (CPF: ${SOLICITACAO.cpf})`);
+  sep();
+  inf(`Médico : ${SOLICITACAO.medico}`);
+  inf(`CPF    : ${SOLICITACAO.cpf}`);
+  inf(`Data   : ${SOLICITACAO.data}  ${SOLICITACAO.hora_ini} → ${SOLICITACAO.hora_fim}`);
+  inf(`Duração: ${SOLICITACAO.duracao_min} minutos`);
+  sep();
 
-  // Abre o navegador visível para você acompanhar
-  const browser = await chromium.launch({ headless: false, slowMo: 500 });
-  const context = await browser.newContext();
-  const page    = await context.newPage();
+  // Usa o perfil do Chrome para herdar sessão logada
+  // IMPORTANTE: feche o Chrome antes de rodar este script!
+  let context;
+  try {
+    inf('Abrindo Chrome com sua sessão existente...');
+    context = await chromium.launchPersistentContext(chromePerfil(), {
+      headless: false,
+      slowMo: 600,
+      args: ['--no-sandbox', '--disable-blink-features=AutomationControlled'],
+      ignoreDefaultArgs: ['--enable-automation'],
+      channel: 'chrome', // usa o Chrome instalado (não o Chromium do Playwright)
+    });
+  } catch (e) {
+    // Fallback: abre navegador limpo se Chrome estiver em uso
+    inf('Chrome em uso — abrindo navegador separado. Você precisará logar manualmente.');
+    const browser = await chromium.launch({ headless: false, slowMo: 600 });
+    context = await browser.newContext();
+  }
+
+  const page = await context.newPage();
 
   try {
-    // ── PASSO 1: Abre o Backoffice ──────────────────────────────────────────
+    // ── PASSO 1: Abre o Backoffice ────────────────────────────────────────────
     inf('Abrindo Backoffice...');
-    await page.goto(BACKOFFICE_URL, { waitUntil: 'networkidle', timeout: 30000 });
-
-    // Se cair na tela de login, pausa para você logar
-    if (page.url().includes('login') || page.url().includes('auth')) {
-      inf('Tela de login detectada. Faça o login manualmente e pressione ENTER aqui para continuar...');
-      await new Promise(resolve => process.stdin.once('data', resolve));
-      await page.goto(BACKOFFICE_URL, { waitUntil: 'networkidle', timeout: 30000 });
-    }
-
-    ok('Backoffice aberto');
-
-    // ── PASSO 2: Busca pelo CPF ─────────────────────────────────────────────
-    inf(`Buscando CPF: ${SOLICITACAO.cpf}...`);
-    const campoBusca = page.locator('input[type="search"], input[placeholder*="busca"], input[placeholder*="Busca"], input[placeholder*="CPF"], input[placeholder*="Nome"]').first();
-    await campoBusca.waitFor({ timeout: 10000 });
-    await campoBusca.fill(SOLICITACAO.cpf);
-    await page.keyboard.press('Enter');
+    await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
 
-    ok(`CPF ${SOLICITACAO.cpf} buscado`);
+    // Se cair no login, aguarda o usuário logar
+    if (page.url().includes('login') || page.url().includes('auth') || page.url().includes('signin')) {
+      inf('⚠️  Tela de login. Faça o login no navegador e pressione ENTER aqui...');
+      await new Promise(r => process.stdin.once('data', r));
+      await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(2000);
+    }
+    ok('Backoffice carregado');
 
-    // ── PASSO 3: Verifica resultados ────────────────────────────────────────
+    // ── PASSO 2: Busca pelo CPF ───────────────────────────────────────────────
+    inf(`Buscando CPF ${SOLICITACAO.cpf}...`);
+    const busca = page.locator('input').filter({ hasAttr: 'type', attrValue: 'search' })
+      .or(page.locator('input[placeholder*="uscar"]'))
+      .or(page.locator('input[placeholder*="CPF"]'))
+      .or(page.locator('input[placeholder*="ome"]'))
+      .first();
+
+    await busca.waitFor({ timeout: 10000 });
+    await busca.clear();
+    await busca.fill(SOLICITACAO.cpf);
+    await page.waitForTimeout(500);
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(2500);
+    ok('Busca realizada');
+
+    // ── PASSO 3: Verifica perfis ativos ──────────────────────────────────────
     inf('Verificando perfis ativos...');
-    await page.waitForTimeout(1500);
-
-    // Conta linhas com badge "Ativo"
-    const badges = await page.locator('text=Ativo').all();
-    const ativos = badges.length;
+    await page.waitForTimeout(1000);
+    const ativos = await page.locator('text=Ativo').count();
 
     if (ativos === 0) {
-      err('Nenhum perfil ativo encontrado. Solicitação marcada como PENDENTE.');
-      await browser.close();
+      err('Nenhum perfil ativo. Solicitação → PENDENTE.');
+      await page.waitForTimeout(8000);
+      await context.close();
       return;
     }
     if (ativos > 1) {
-      err(`${ativos} perfis ativos encontrados. Não executar — PENDENTE para revisão manual.`);
-      await browser.close();
+      err(`${ativos} perfis ativos encontrados → PENDENTE para revisão manual.`);
+      await page.waitForTimeout(8000);
+      await context.close();
       return;
     }
+    ok(`${ativos} perfil ativo — prosseguindo`);
 
-    ok('1 perfil ativo encontrado — prosseguindo');
-
-    // ── PASSO 4: Clica nos 3 pontinhos ─────────────────────────────────────
+    // ── PASSO 4: Abre menu ⋮ e clica em Agenda ────────────────────────────────
     inf('Abrindo menu de ações...');
-    const menuBtn = page.locator('button[aria-label*="ação"], button:has(svg), [data-testid="menu"]').first();
-    // Tenta clicar no botão de 3 pontinhos da linha ativa
-    const linhaAtiva = page.locator('tr, [role="row"]').filter({ hasText: 'Ativo' }).last();
-    const btnAcoes   = linhaAtiva.locator('button').last();
-    await btnAcoes.click();
+    const linhaAtiva = page.locator('tr').filter({ hasText: 'Ativo' }).last();
+    const botaoMenu  = linhaAtiva.locator('button').last();
+    await botaoMenu.click();
     await page.waitForTimeout(1000);
-
     ok('Menu aberto');
 
-    // ── PASSO 5: Clica em "Agenda" ──────────────────────────────────────────
     inf('Clicando em Agenda...');
-    await page.locator('text=Agenda').last().click();
-    await page.waitForTimeout(2000);
+    await page.locator('[role="menuitem"]:has-text("Agenda"), li:has-text("Agenda"), a:has-text("Agenda")').last().click();
+    await page.waitForTimeout(2500);
+    ok('Página Agenda aberta');
 
-    ok('Página de Agenda aberta');
-
-    // ── PASSO 6: Aba "Horário adicional" ────────────────────────────────────
-    inf('Clicando em Horário adicional...');
+    // ── PASSO 5: Aba Horário adicional ────────────────────────────────────────
+    inf('Clicando em "Horário adicional"...');
     await page.locator('text=Horário adicional').click();
     await page.waitForTimeout(1500);
+    ok('Aba Horário adicional ativa');
 
-    ok('Aba Horário adicional selecionada');
-
-    // ── PASSO 7: Preenche os campos ─────────────────────────────────────────
+    // ── PASSO 6: Preenche campos ──────────────────────────────────────────────
     inf('Preenchendo campos...');
 
-    // Tempo de atendimento (select)
-    await page.locator('select, [role="combobox"]').first().selectOption({ label: `${SOLICITACAO.duracao_min} minutos` }).catch(async () => {
-      // Tenta por valor numérico se label não funcionar
-      await page.locator('select, [role="combobox"]').first().selectOption(SOLICITACAO.duracao_min);
-    });
-    ok(`Tempo de atendimento: ${SOLICITACAO.duracao_min} minutos`);
+    // Tempo de atendimento (select/combobox)
+    const selectTempo = page.locator('select').first()
+      .or(page.locator('[role="combobox"]').first());
+    try {
+      await selectTempo.selectOption({ label: `${SOLICITACAO.duracao_min} minutos` });
+    } catch {
+      await selectTempo.selectOption(SOLICITACAO.duracao_min);
+    }
+    ok(`Tempo: ${SOLICITACAO.duracao_min} minutos`);
+
+    await page.waitForTimeout(500);
 
     // Antecedência: 00:00
-    const campoAntecedencia = page.locator('input[placeholder*="00:00"], input[placeholder*="hh:mm"]').first();
-    await campoAntecedencia.fill('00:00');
-    ok('Antecedência: 00:00');
+    const inputs = await page.locator('input[placeholder*="hh:mm"], input[placeholder*="00:00"]').all();
+    if (inputs[0]) { await inputs[0].fill('00:00'); ok('Antecedência: 00:00'); }
 
     // Data
-    const campoData = page.locator('input[placeholder*="DD/MM"], input[type="date"], input[placeholder*="data"]').first();
-    await campoData.fill(SOLICITACAO.data);
+    const inputData = page.locator('input[placeholder*="DD/MM"], input[placeholder*="dd/mm"], input[type="date"]').first();
+    await inputData.fill(SOLICITACAO.data);
+    await page.keyboard.press('Tab');
     ok(`Data: ${SOLICITACAO.data}`);
+    await page.waitForTimeout(300);
 
-    // Hora inicial
-    const camposHora = await page.locator('input[placeholder*="hh:mm"]').all();
-    if (camposHora.length >= 2) {
-      await camposHora[1].fill(SOLICITACAO.hora_ini);
-      ok(`Hora inicial: ${SOLICITACAO.hora_ini}`);
-    }
+    // Hora inicial e final
+    const horaInputs = await page.locator('input[placeholder*="hh:mm"], input[placeholder*="HH:MM"]').all();
+    if (horaInputs[1]) { await horaInputs[1].fill(SOLICITACAO.hora_ini); ok(`Hora inicial: ${SOLICITACAO.hora_ini}`); }
+    await page.waitForTimeout(300);
+    if (horaInputs[2]) { await horaInputs[2].fill(SOLICITACAO.hora_fim); ok(`Hora final: ${SOLICITACAO.hora_fim}`); }
 
-    // Hora final
-    if (camposHora.length >= 3) {
-      await camposHora[2].fill(SOLICITACAO.hora_fim);
-      ok(`Hora final: ${SOLICITACAO.hora_fim}`);
-    }
-
-    // ── PASSO 8: Clica em Programar ─────────────────────────────────────────
+    // ── PASSO 7: Clica em Programar ───────────────────────────────────────────
+    await page.waitForTimeout(500);
     inf('Clicando em Programar...');
     await page.locator('button:has-text("Programar")').click();
     await page.waitForTimeout(3000);
 
-    ok('Horário programado!');
+    sep();
+    ok(`SUCESSO! Horário ${SOLICITACAO.hora_ini}–${SOLICITACAO.hora_fim} de ${SOLICITACAO.data} programado!`);
+    ok(`Médico: ${SOLICITACAO.medico}`);
+    sep();
+    inf('👉 Agora vá à planilha e preencha a coluna AO com "Aprovado"');
+    sep();
 
-    // ── PASSO 9: Confirma na lista ───────────────────────────────────────────
-    const confirmado = await page.locator('text=Horários programados').isVisible();
-    if (confirmado) {
-      ok('Horário confirmado na lista "Horários programados"');
-    }
-
-    inf('');
-    inf('══════════════════════════════════════════');
-    ok(`SUCESSO! Horário ${SOLICITACAO.hora_ini}–${SOLICITACAO.hora_fim} em ${SOLICITACAO.data} programado para ${SOLICITACAO.medico}`);
-    inf('Agora acesse a planilha e preencha coluna AO com "Aprovado"');
-    inf('══════════════════════════════════════════');
-
-    // Mantém navegador aberto para conferência
-    inf('Navegador mantido aberto para você conferir. Feche quando quiser.');
-    await page.waitForTimeout(15000);
+    await page.waitForTimeout(20000); // mantém aberto 20s para conferência
 
   } catch (e) {
-    err(`Erro durante execução: ${e.message}`);
-    inf('O navegador ficará aberto para você verificar o estado atual.');
-    await page.waitForTimeout(20000);
+    err(`Erro: ${e.message}`);
+    inf('Navegador mantido aberto para verificação. Feche manualmente.');
+    await page.waitForTimeout(30000);
   } finally {
-    await browser.close();
+    await context.close();
   }
 }
 
