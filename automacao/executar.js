@@ -2,6 +2,12 @@ const { chromium } = require('playwright');
 const path = require('path');
 const os   = require('os');
 
+// ─── CREDENCIAIS DO BACKOFFICE ────────────────────────────────────────────────
+const LOGIN = {
+  email: 'juliana.verissimo@conexasaude.com.br',
+  senha: '74b225df2',
+};
+
 // ─── SOLICITAÇÃO (Alberto Tavares — planilha 01/06/2026) ──────────────────────
 const SOLICITACAO = {
   medico:      'Alberto Tavares de Araújo Freitas',
@@ -62,10 +68,17 @@ async function executar() {
     await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
 
-    // Se cair no login, aguarda o usuário logar
-    if (page.url().includes('login') || page.url().includes('auth') || page.url().includes('signin')) {
-      inf('⚠️  Tela de login. Faça o login no navegador e pressione ENTER aqui...');
-      await new Promise(r => process.stdin.once('data', r));
+    // Se cair no login, preenche automaticamente
+    if (page.url().includes('login') || page.url().includes('auth') || page.url().includes('signin') || await page.locator('input[type="email"], input[type="text"][name*="email"], input[placeholder*="mail"]').isVisible().catch(() => false)) {
+      inf('Tela de login detectada — fazendo login automaticamente...');
+      await page.locator('input[type="email"], input[name*="email"], input[placeholder*="mail"], input[placeholder*="E-mail"]').first().fill(LOGIN.email);
+      await page.waitForTimeout(400);
+      await page.locator('input[type="password"]').first().fill(LOGIN.senha);
+      await page.waitForTimeout(400);
+      await page.locator('button[type="submit"], button:has-text("Entrar"), button:has-text("Login"), button:has-text("Acessar")').first().click();
+      await page.waitForTimeout(3000);
+      ok('Login realizado');
+      // Navega para a página de profissionais
       await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await page.waitForTimeout(2000);
     }
