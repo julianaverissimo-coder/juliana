@@ -9,7 +9,7 @@ const LOGIN = {
   senha: '74b225df2',
 };
 
-const PLANILHA_CSV = 'https://docs.google.com/spreadsheets/d/1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8/gviz/tq?tqx=out:csv&gid=1722470876';
+const PLANILHA_CSV = 'https://docs.google.com/spreadsheets/d/1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8/gviz/tq?tqx=out:csv&gid=1809280439';
 const BACKOFFICE_URL = 'https://backoffice.conexasaude.com.br/usuario/profissionais';
 const PROCESSADOS_FILE = path.join(__dirname, 'processados.json');
 const INTERVALO_MS = 20 * 60 * 1000; // 20 minutos
@@ -157,14 +157,14 @@ async function lerSolicitacoesPendentes() {
   const headers = linhas[0].map(h => h.toLowerCase().trim());
 
   const idx = {
-    medico:   encontrarColuna(headers, ['nome do médico', 'nome do profissional', 'médico', 'medico', 'nome completo do médico']),
-    cpf:      encontrarColuna(headers, ['cpf', 'cpf do médico', 'cpf do profissional']),
-    data:     encontrarColuna(headers, ['data', 'data do horário', 'data do horario', 'data de abertura']),
-    hora_ini: encontrarColuna(headers, ['hora inicial', 'hora de início', 'hora inicio', 'início', 'inicio']),
-    hora_fim: encontrarColuna(headers, ['hora final', 'hora fim', 'término', 'termino', 'fim']),
+    medico:   encontrarColuna(headers, ['nome completo', 'nome do médico', 'nome do profissional', 'médico', 'medico']),
+    cpf:      encontrarColuna(headers, ['cpf']),
+    data:     encontrarColuna(headers, ['data do evento', 'data']),
+    hora_ini: encontrarColuna(headers, ['hr início', 'hr inicio', 'hora início', 'hora inicio', 'hr ini']),
+    hora_fim: encontrarColuna(headers, ['hr fim', 'hora fim', 'hr final']),
     duracao:  encontrarColuna(headers, ['duração', 'duracao', 'tempo', 'minutos', 'tempo de atendimento']),
     paciente: encontrarColuna(headers, ['paciente', 'nome do paciente', 'paciente específico', 'paciente especifico']),
-    aprovado: encontrarColuna(headers, ['aprovado pela gestão médica', 'aprovado pela gestao medica', 'aprovado', 'gestão médica', 'sim/não', 'sim/nao']),
+    aprovado: encontrarColuna(headers, ['aprovado pela gestão médica', 'aprovado pela gestao medica', 'aprovado pela gestão', 'aprovado']),
     status:   encontrarColuna(headers, ['status', 'situação', 'situacao']),
   };
 
