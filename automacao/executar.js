@@ -237,6 +237,10 @@ async function lerPendentes() {
   const processados = carregarProcessados();
   const pendentes   = [];
 
+  // DEBUG TEMPORÁRIO — mostra as últimas 5 linhas com dados
+  const ultimasLinhas = linhas.filter(r => r && r.length >= 10 && (r[COL.EMAIL]||'').includes('@')).slice(-5);
+  ultimasLinhas.forEach((r, idx) => inf(`DEBUG | email=${r[COL.EMAIL]} | tipo=${r[COL.TIPO]} | status="${r[COL.STATUS]}"`));
+
   for (let i = 1; i < linhas.length; i++) {
     const row = linhas[i];
     if (!row || row.length < 10) continue;
