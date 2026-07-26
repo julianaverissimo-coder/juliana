@@ -85,7 +85,10 @@ let _ctx  = null;
 let _page = null; // aba de fundo (planilha + Apps Script)
 
 async function garantirNavegador() {
-  if (_ctx) return;
+  // Verifica se o contexto ainda está vivo
+  if (_ctx) {
+    try { await _ctx.pages(); return; } catch { _ctx = null; _page = null; }
+  }
   inf('Abrindo Chrome com perfil salvo...');
   _ctx  = await chromium.launchPersistentContext(PROFILE_DIR, {
     headless: false,
@@ -251,16 +254,19 @@ async function registrarSucesso(rowNum, sol) {
 }
 
 async function registrarFalha(rowNum, sol, motivo, detalhe = '') {
+  // Trunca detalhe para não gerar URL gigante
+  const detalheCurto = String(detalhe || motivo).substring(0, 120);
   await atualizarPlanilha(rowNum, {
     [COL.AGENTE]:     `NÃO REALIZADO - ${motivo}`,
-    [COL.OBSERVACAO]: detalhe || motivo,
+    [COL.OBSERVACAO]: detalheCurto,
   });
   // Envia e-mail de alerta via Apps Script
   try {
+    await garantirNavegador();
     const emailParams = encodeURIComponent(JSON.stringify({
       acao: 'email', para: EMAIL_ALERTA,
       assunto: `[AGENTE IA] NÃO REALIZADO — ${sol.nome || sol.email}`,
-      mensagem: `Médico: ${sol.nome || '-'}\nE-mail: ${sol.email}\nTipo: ${sol.tipo}\nMotivo: ${motivo}\nDetalhe: ${detalhe}\nHorário: ${agoraFormatado()}`,
+      mensagem: `Médico: ${sol.nome || '-'}\nE-mail: ${sol.email}\nTipo: ${sol.tipo}\nMotivo: ${motivo}\nDetalhe: ${detalheCurto}\nHorário: ${agoraFormatado()}`,
     }));
     await _page.goto(`${APPS_SCRIPT_URL}?dados=${emailParams}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
   } catch {}
