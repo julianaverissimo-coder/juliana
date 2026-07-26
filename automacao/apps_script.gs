@@ -15,8 +15,36 @@ const CI = {
   STATUS: 13, ANALISTA: 14,
 };
 
-// ── GET: retorna linhas pendentes ─────────────────────────────
+// ── GET: escreve na planilha ou envia e-mail (dados via query param) ──
 function doGet(e) {
+  try {
+    const dadosStr = e && e.parameter && e.parameter.dados;
+    if (!dadosStr) return json({ ok: false, msg: 'Sem dados' });
+
+    const dados = JSON.parse(decodeURIComponent(dadosStr));
+
+    if (dados.acao === 'email') {
+      GmailApp.sendEmail(dados.para, dados.assunto, dados.mensagem);
+      return json({ ok: true, msg: 'E-mail enviado' });
+    }
+
+    const ss  = SpreadsheetApp.getActiveSpreadsheet();
+    const aba = ss.getSheetByName(ABA_NOME) || ss.getActiveSheet();
+    const row = parseInt(dados.row);
+
+    for (const [colIndex, valor] of Object.entries(dados.colunas)) {
+      aba.getRange(row, parseInt(colIndex) + 1).setValue(valor);
+    }
+
+    return json({ ok: true, msg: `Linha ${row} atualizada` });
+
+  } catch(ex) {
+    return json({ ok: false, msg: ex.message });
+  }
+}
+
+// ── Função antiga de leitura (não usada, mantida para referência) ──
+function doGet_leitura_antiga(e) {
   try {
     const ss  = SpreadsheetApp.getActiveSpreadsheet();
     const aba = ss.getSheetByName(ABA_NOME) || ss.getActiveSheet();
