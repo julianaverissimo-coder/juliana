@@ -87,45 +87,45 @@ function salvarProcessado(chave, dados) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  HTTP HELPERS
+//  NAVEGADOR GLOBAL (Chrome autenticado — fica aberto o tempo todo)
 // ═══════════════════════════════════════════════════════════════════
-function httpGet(url, redir = 0) {
-  return new Promise((resolve, reject) => {
-    const mod = url.startsWith('https') ? https : http;
-    mod.get(url, { rejectUnauthorized: false }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        if (redir > 5) return reject(new Error('Muitos redirecionamentos'));
-        return resolve(httpGet(res.headers.location, redir + 1));
-      }
-      let data = '';
-      res.on('data', d => data += d);
-      res.on('end', () => resolve(data));
-    }).on('error', reject);
-  });
+let _browser = null;
+let _bgPage  = null; // página de fundo para requisições autenticadas
+
+async function garantirNavegador() {
+  if (_browser && _bgPage) return;
+  _browser = await chromium.launch({ headless: false, channel: 'chrome', args: ['--no-sandbox'] });
+  const ctx = await _browser.newContext();
+  _bgPage   = await ctx.newPage();
+  await _bgPage.goto('https://accounts.google.com', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+  ok('Chrome iniciado com sessão autenticada');
 }
 
-function httpPost(url, corpo) {
-  return new Promise((resolve) => {
+// Faz GET autenticado via Chrome (usa cookies da sessão do usuário)
+async function fetchAutenticado(url) {
+  await garantirNavegador();
+  return _bgPage.evaluate(async (u) => {
     try {
-      const u = new URL(url);
-      const mod = url.startsWith('https') ? https : http;
-      const opts = {
-        hostname: u.hostname,
-        path: u.pathname + u.search,
+      const r = await fetch(u, { credentials: 'include' });
+      return await r.text();
+    } catch(e) { return null; }
+  }, url);
+}
+
+// Faz POST autenticado via Chrome
+async function postAutenticado(url, dados) {
+  await garantirNavegador();
+  return _bgPage.evaluate(async (u, body) => {
+    try {
+      const r = await fetch(u, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(corpo) },
-        rejectUnauthorized: false,
-      };
-      const req = mod.request(opts, (res) => {
-        let data = '';
-        res.on('data', d => data += d);
-        res.on('end', () => resolve(data));
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(body),
+        credentials: 'include',
       });
-      req.on('error', () => resolve(null));
-      req.write(corpo);
-      req.end();
-    } catch { resolve(null); }
-  });
+      return await r.text();
+    } catch(e) { return null; }
+  }, url, dados);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -179,11 +179,10 @@ function parsearDescricao(texto) {
 // ═══════════════════════════════════════════════════════════════════
 async function atualizarPlanilha(rowIndex, colunas) {
   if (!APPS_SCRIPT_URL) {
-    aviso('APPS_SCRIPT_URL não configurada — planilha não será atualizada automaticamente.');
+    aviso('APPS_SCRIPT_URL não configurada — planilha não será atualizada.');
     return false;
   }
-  const corpo = JSON.stringify({ row: rowIndex, colunas });
-  const resp  = await httpPost(APPS_SCRIPT_URL, corpo);
+  const resp = await postAutenticado(APPS_SCRIPT_URL, { row: rowIndex, colunas });
   if (!resp) { err('Sem resposta do Apps Script'); return false; }
   try {
     const r = JSON.parse(resp);
@@ -222,23 +221,23 @@ async function enviarEmailAlerta(sol, motivo, detalhe) {
     assunto:  `[AGENTE IA] NÃO REALIZADO — ${sol.nome || sol.email}`,
     mensagem: `Olá Juliana,\n\nO Agente de IA não conseguiu executar a solicitação abaixo:\n\nMédico: ${sol.nome || '-'}\nE-mail: ${sol.email}\nTipo: ${sol.tipo}\nMotivo: ${motivo}\nDetalhe: ${detalhe}\nData/hora: ${agoraFormatado()}\n\nAcesse a planilha para tomar as providências.\n\nAtenciosamente,\nAgente de IA — Conexa Saúde`,
   });
-  await httpPost(APPS_SCRIPT_URL, corpo);
+  await postAutenticado(APPS_SCRIPT_URL, JSON.parse(corpo));
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  LÊ PLANILHA VIA APPS SCRIPT (autenticado, sem precisar ser pública)
+//  LÊ PLANILHA VIA CHROME AUTENTICADO
 // ═══════════════════════════════════════════════════════════════════
 async function lerPendentes() {
   inf('Verificando planilha (aba PAINEL)...');
 
   if (!APPS_SCRIPT_URL) { aviso('APPS_SCRIPT_URL não configurada'); return []; }
 
-  const resposta = await httpGet(APPS_SCRIPT_URL);
+  const resposta = await fetchAutenticado(APPS_SCRIPT_URL);
   if (!resposta) { err('Sem resposta do Apps Script'); return []; }
 
   let dados;
   try { dados = JSON.parse(resposta); }
-  catch { err('Resposta inválida do Apps Script: ' + resposta.substring(0, 100)); return []; }
+  catch { err('Resposta inválida do Apps Script: ' + String(resposta).substring(0, 120)); return []; }
 
   if (!dados.ok) { err('Apps Script erro: ' + dados.msg); return []; }
 
@@ -247,11 +246,10 @@ async function lerPendentes() {
     const chave = `${sol.email}_${sol.data}_${sol.tipo}`.replace(/\s+/g, '_').toLowerCase();
     if (processados[chave]) return false;
     sol.chave    = chave;
-    sol.rowIndex = sol.row; // row já é o número real da linha na planilha
+    sol.rowIndex = sol.row;
     return true;
   });
 
-  // Ordem: mais antiga primeiro
   pendentes.sort((a, b) => {
     const toDate = s => { if (!s) return 0; const [d,m,y] = (s||'').split('/'); return new Date(`${y}-${m}-${d}`); };
     return toDate(a.data) - toDate(b.data);
