@@ -101,31 +101,44 @@ async function garantirNavegador() {
   ok('Chrome iniciado com sessão autenticada');
 }
 
-// Faz GET autenticado via Chrome (usa cookies da sessão do usuário)
+// Faz GET autenticado navegando diretamente no Chrome
 async function fetchAutenticado(url) {
   await garantirNavegador();
-  return _bgPage.evaluate(async (u) => {
-    try {
-      const r = await fetch(u, { credentials: 'include' });
-      return await r.text();
-    } catch(e) { return null; }
-  }, url);
+  try {
+    await _bgPage.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const texto = await _bgPage.locator('body').innerText({ timeout: 10000 });
+    return texto;
+  } catch(e) {
+    err('Erro ao navegar para Apps Script: ' + e.message);
+    return null;
+  }
 }
 
-// Faz POST autenticado via Chrome
+// Faz POST autenticado via fetch dentro do contexto do Chrome (mesmo domínio)
 async function postAutenticado(url, dados) {
   await garantirNavegador();
-  return _bgPage.evaluate(async (u, body) => {
-    try {
-      const r = await fetch(u, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(body),
-        credentials: 'include',
-      });
-      return await r.text();
-    } catch(e) { return null; }
-  }, url, dados);
+  try {
+    // Garante que a página está no domínio script.google.com para evitar CORS
+    const paginaAtual = _bgPage.url();
+    if (!paginaAtual.includes('script.google.com')) {
+      await _bgPage.goto('https://script.google.com', { waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => {});
+    }
+    const resposta = await _bgPage.evaluate(async (u, body) => {
+      try {
+        const r = await fetch(u, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(body),
+          credentials: 'include',
+        });
+        return await r.text();
+      } catch(e) { return null; }
+    }, url, dados);
+    return resposta;
+  } catch(e) {
+    err('Erro ao POST Apps Script: ' + e.message);
+    return null;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════
