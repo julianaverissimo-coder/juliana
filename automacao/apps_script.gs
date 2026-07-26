@@ -1,50 +1,34 @@
-// Cole este código em: Planilha → Extensões → Apps Script
-// Depois clique em "Implantar" → "Nova implantação" → Tipo: App da Web
-// Executar como: Eu mesmo | Acesso: Qualquer pessoa
-// Copie a URL gerada e cole em executar.js na variável APPS_SCRIPT_URL
+// ═══════════════════════════════════════════════════════════════
+//  Apps Script — Agente de IA Conexa Saúde
+//  Cole em: Planilha → Extensões → Apps Script
+//  Implante como: App da Web | Qualquer pessoa | Executar como: Eu mesmo
+// ═══════════════════════════════════════════════════════════════
 
-const ABA_ID = 1722470876; // gid da aba
+const ABA_NOME = 'PAINEL';
 
 function doPost(e) {
   try {
     const dados = JSON.parse(e.postData.contents);
-    const { cpf, data, hora_ini } = dados;
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const abas = ss.getSheets();
-    let aba = abas.find(s => s.getSheetId() === ABA_ID) || ss.getActiveSheet();
-
-    const valores = aba.getDataRange().getValues();
-    const headers = valores[0].map(h => String(h).toLowerCase().trim());
-
-    // Encontra coluna AO (status) e CPF
-    const colAO  = headers.findIndex(h => h.includes('status') || h === 'ao');
-    const colCPF = headers.findIndex(h => h.includes('cpf'));
-    const colData = headers.findIndex(h => h.includes('data'));
-    const colHora = headers.findIndex(h => h.includes('hora') && h.includes('ini'));
-
-    if (colAO < 0 || colCPF < 0) {
-      return resposta(false, 'Colunas não encontradas');
+    // Ação: enviar e-mail de alerta
+    if (dados.acao === 'email') {
+      GmailApp.sendEmail(dados.para, dados.assunto, dados.mensagem);
+      return resposta(true, 'E-mail enviado');
     }
 
-    const cpfLimpo = cpf.replace(/\D/g, '');
+    // Ação padrão: atualizar células da planilha
+    const ss  = SpreadsheetApp.getActiveSpreadsheet();
+    const aba = ss.getSheetByName(ABA_NOME) || ss.getActiveSheet();
 
-    for (let i = 1; i < valores.length; i++) {
-      const rowCPF  = String(valores[i][colCPF] || '').replace(/\D/g, '');
-      const rowData = String(valores[i][colData] || '').trim();
-      const rowHora = colHora >= 0 ? String(valores[i][colHora] || '').trim() : '';
+    const row     = parseInt(dados.row);   // número da linha (começa em 1)
+    const colunas = dados.colunas;         // { indiceColuna: valor, ... }
 
-      const baterCPF  = rowCPF === cpfLimpo;
-      const baterData = !data     || rowData.includes(data)     || data.includes(rowData);
-      const baterHora = !hora_ini || rowHora.includes(hora_ini) || hora_ini.includes(rowHora);
-
-      if (baterCPF && baterData && baterHora) {
-        aba.getRange(i + 1, colAO + 1).setValue('Aprovado');
-        return resposta(true, `Linha ${i + 1} atualizada com "Aprovado"`);
-      }
+    for (const [colIndex, valor] of Object.entries(colunas)) {
+      const col = parseInt(colIndex) + 1;  // planilha começa em 1
+      aba.getRange(row, col).setValue(valor);
     }
 
-    return resposta(false, 'Linha não encontrada na planilha');
+    return resposta(true, `Linha ${row} atualizada`);
 
   } catch (ex) {
     return resposta(false, ex.message);
