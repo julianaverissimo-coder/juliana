@@ -242,8 +242,8 @@ async function lerPendentes() {
     if (!row || row.length < 10) continue;
 
     const status = (row[COL.STATUS] || '').trim();
-    // Só processa linhas com Status em branco
-    if (status !== '') continue;
+    // Só processa linhas com Status em branco (~ é o placeholder do dropdown vazio)
+    if (status !== '' && status !== '~') continue;
 
     const tipo  = (row[COL.TIPO]  || '').trim();
     const email = (row[COL.EMAIL] || '').trim().toLowerCase();
