@@ -15,11 +15,40 @@ const CI = {
   STATUS: 13, ANALISTA: 14,
 };
 
-// ── GET: escreve na planilha ou envia e-mail (dados via query param) ──
+// ── GET: lê pendentes (sem param) ou escreve/envia (com param dados) ──
 function doGet(e) {
   try {
     const dadosStr = e && e.parameter && e.parameter.dados;
-    if (!dadosStr) return json({ ok: false, msg: 'Sem dados' });
+
+    // Sem parâmetro → retorna linhas pendentes
+    if (!dadosStr) {
+      const ss   = SpreadsheetApp.getActiveSpreadsheet();
+      const aba  = ss.getSheetByName(ABA_NOME) || ss.getActiveSheet();
+      const ult  = aba.getLastRow();
+      if (ult < LINHA_INI) return json({ ok: true, pendentes: [] });
+
+      const vals  = aba.getRange(LINHA_INI, 1, ult - LINHA_INI + 1, NUM_COLUNAS).getValues();
+      const tipos = ['fechamento de agenda com reposição','fechamento de agenda sem reposição','abertura de horário extra'];
+      const pend  = [];
+      const fmt   = (v, tipo) => {
+        if (!v) return '';
+        if (v instanceof Date) return Utilities.formatDate(v, 'America/Sao_Paulo', tipo === 'data' ? 'dd/MM/yyyy' : 'HH:mm');
+        return String(v);
+      };
+      vals.forEach((row, idx) => {
+        const status = String(row[CI.STATUS] || '').trim();
+        if (status !== '' && status !== '~') return;
+        const tipo  = String(row[CI.TIPO]  || '').trim();
+        if (!tipos.some(t => tipo.toLowerCase().includes(t))) return;
+        const email = String(row[CI.EMAIL] || '').trim();
+        if (!email) return;
+        pend.push({ row: LINHA_INI + idx, nome: String(row[CI.NOME]||''), email, tipo,
+          desc: String(row[CI.DESC]||''), data: fmt(row[CI.DATA],'data'),
+          hora_ini: fmt(row[CI.HINI],'hora'), hora_fim: fmt(row[CI.HFIM],'hora'),
+          reposicao: String(row[CI.REPOS]||'') });
+      });
+      return json({ ok: true, pendentes: pend });
+    }
 
     const dados = JSON.parse(decodeURIComponent(dadosStr));
 

@@ -179,31 +179,40 @@ async function lerPendentes() {
   await garantirNavegador();
 
   try {
-    // Usa fetch() dentro do Chrome autenticado — evita download do CSV
-    await _page.goto('https://docs.google.com', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    // Navega para o Apps Script URL — Chrome autenticado como Trabalho acessa diretamente
+    await _page.goto(APPS_SCRIPT_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await _page.waitForTimeout(1500);
 
-    const csv = await _page.evaluate(async (url) => {
-      try {
-        const r = await fetch(url, { credentials: 'include' });
-        return await r.text();
-      } catch(e) { return null; }
-    }, PLANILHA_CSV);
+    const corpo = await _page.locator('body').innerText({ timeout: 10000 });
 
-    if (!csv) { err('Sem resposta da planilha'); return []; }
-
-    // Se retornou HTML de login, pede para o usuário logar
-    if (csv.startsWith('<!DOCTYPE') || csv.startsWith('<html')) {
-      aviso('Faça login no Google na janela do Chrome e aguarde 30 segundos...');
-      await _page.waitForTimeout(30000);
-      const csv2 = await _page.evaluate(async (url) => {
-        const r = await fetch(url, { credentials: 'include' });
-        return await r.text();
-      }, PLANILHA_CSV);
-      if (!csv2 || csv2.startsWith('<')) { err('Planilha inacessível após login'); return []; }
-      return await _processarCSV(csv2);
+    if (!corpo || corpo.startsWith('<')) {
+      err('Apps Script retornou HTML — verifique se o Chrome está logado');
+      return [];
     }
 
-    return _processarCSV(csv);
+    let dados;
+    try { dados = JSON.parse(corpo); }
+    catch { err('Resposta inválida: ' + corpo.substring(0, 100)); return []; }
+
+    if (!dados.ok) { err('Apps Script: ' + dados.msg); return []; }
+
+    const processados = carregarProcessados();
+    const pendentes   = (dados.pendentes || []).filter(sol => {
+      const chave = `${sol.email}_${sol.data}_${sol.tipo}`.replace(/\s+/g, '_').toLowerCase();
+      if (processados[chave]) return false;
+      sol.chave    = chave;
+      sol.rowIndex = sol.row;
+      sol.row      = sol; // compatibilidade com executarAbertura
+      return true;
+    });
+
+    pendentes.sort((a, b) => {
+      const td = s => { if (!s) return 0; const [d,m,y] = (s||'').split('/'); return new Date(`${y}-${m}-${d}`); };
+      return td(a.data) - td(b.data);
+    });
+
+    ok(`${pendentes.length} solicitação(ões) pendente(s)`);
+    return pendentes;
 
   } catch(e) {
     err('Erro ao ler planilha: ' + e.message);
