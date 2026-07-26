@@ -272,7 +272,7 @@ async function registrarFalha(rowNum, sol, motivo, detalhe = '') {
 async function abrirBackoffice() {
   const page = await _ctx.newPage();
   inf('Abrindo Backoffice...');
-  await page.goto('https://backoffice.conexasaude.com.br', { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.waitForTimeout(2000);
 
   // Faz login se necessário
@@ -288,20 +288,10 @@ async function abrirBackoffice() {
     await page.locator('button[type="submit"], button:has-text("Entrar")').first().click();
     await page.waitForTimeout(3000);
     ok('Login realizado');
+    // Após login, navega direto para a lista de profissionais
+    await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(2000);
   }
-
-  // Navega pelo menu lateral: clica em "Profissionais" (item do menu)
-  inf('Clicando em Profissionais no menu...');
-  await page.locator('nav a:has-text("Profissionais"), li:has-text("Profissionais")').first().click();
-  await page.waitForTimeout(1000);
-
-  // Clica no submenu "Profissionais" (segundo clique)
-  const submenu = page.locator('a:has-text("Profissionais"), li:has-text("Profissionais")');
-  const count = await submenu.count();
-  if (count > 1) {
-    await submenu.nth(1).click();
-  }
-  await page.waitForTimeout(2000);
 
   ok('Tela de Profissionais aberta');
   return page;
