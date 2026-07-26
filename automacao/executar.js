@@ -13,7 +13,7 @@ const LOGIN_BACKOFFICE = {
 
 const EMAIL_ALERTA     = 'juliana.verissimo@conexasaude.com.br';
 const PLANILHA_CSV     = 'https://docs.google.com/spreadsheets/d/1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8/gviz/tq?tqx=out:csv&gid=1809280439';
-const BACKOFFICE_URL   = 'https://backoffice.conexasaude.com.br/usuario/profissionais';
+const BACKOFFICE_URL   = 'https://backoffice.conexasaude.com.br/profissional/consulta';
 const APPS_SCRIPT_URL  = 'https://script.google.com/a/macros/conexasaude.com.br/s/AKfycbzY_GdqVG7mlv0MPyZnlxXPcYo9yLsZReDU6TvBr1ecmQ5LWlL8DoXeVeWTN0pamgY/exec';
 const PROFILE_DIR      = path.join(__dirname, 'chrome_profile'); // sessão salva aqui
 const PROCESSADOS_FILE = path.join(__dirname, 'processados.json');
