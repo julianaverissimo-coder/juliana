@@ -131,6 +131,47 @@ function parsearDescricao(texto) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  PROCESSA CSV E RETORNA PENDENTES
+// ═══════════════════════════════════════════════════════════════════
+function _processarCSV(csv) {
+  const linhas = parseCSV(csv);
+  if (linhas.length < 2) { aviso('Planilha sem dados'); return []; }
+
+  const processados  = carregarProcessados();
+  const pendentes    = [];
+  const tiposValidos = [
+    'fechamento de agenda com reposição',
+    'fechamento de agenda sem reposição',
+    'abertura de horário extra',
+  ];
+
+  for (let i = 1; i < linhas.length; i++) {
+    const row = linhas[i];
+    if (!row || row.length < 10) continue;
+    const status = (row[COL.STATUS] || '').trim();
+    if (status !== '' && status !== '~') continue;
+    const tipo  = (row[COL.TIPO]  || '').trim();
+    const email = (row[COL.EMAIL] || '').trim().toLowerCase();
+    if (!tiposValidos.some(t => tipo.toLowerCase().includes(t))) continue;
+    if (!email) continue;
+    const data  = (row[COL.DATA] || '').trim();
+    const chave = `${email}_${data}_${tipo}`.replace(/\s+/g, '_').toLowerCase();
+    if (processados[chave]) continue;
+    pendentes.push({ rowIndex: i, row, chave, email,
+      nome: (row[COL.NOME] || '').trim(), tipo,
+      desc: (row[COL.DESCRICAO] || '').trim(), data });
+  }
+
+  pendentes.sort((a, b) => {
+    const td = s => { if (!s) return 0; const [d,m,y] = s.split('/'); return new Date(`${y}-${m}-${d}`); };
+    return td(a.data) - td(b.data);
+  });
+
+  ok(`${pendentes.length} solicitação(ões) pendente(s)`);
+  return pendentes;
+}
+
+// ═══════════════════════════════════════════════════════════════════
 //  LÊ PLANILHA via Chrome autenticado (navega para URL CSV)
 // ═══════════════════════════════════════════════════════════════════
 async function lerPendentes() {
@@ -138,72 +179,31 @@ async function lerPendentes() {
   await garantirNavegador();
 
   try {
-    await _page.goto(PLANILHA_CSV, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await _page.waitForTimeout(2000);
+    // Usa fetch() dentro do Chrome autenticado — evita download do CSV
+    await _page.goto('https://docs.google.com', { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
 
-    // Verifica se foi redirecionado para login
-    const urlAtual = _page.url();
-    if (urlAtual.includes('accounts.google.com') || urlAtual.includes('signin')) {
-      aviso('Chrome precisa de login no Google. Faça login na janela do Chrome e aguarde...');
-      await _page.waitForURL(u => !String(u).includes('accounts.google.com'), { timeout: 180000 });
-      await _page.goto(PLANILHA_CSV, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await _page.waitForTimeout(2000);
+    const csv = await _page.evaluate(async (url) => {
+      try {
+        const r = await fetch(url, { credentials: 'include' });
+        return await r.text();
+      } catch(e) { return null; }
+    }, PLANILHA_CSV);
+
+    if (!csv) { err('Sem resposta da planilha'); return []; }
+
+    // Se retornou HTML de login, pede para o usuário logar
+    if (csv.startsWith('<!DOCTYPE') || csv.startsWith('<html')) {
+      aviso('Faça login no Google na janela do Chrome e aguarde 30 segundos...');
+      await _page.waitForTimeout(30000);
+      const csv2 = await _page.evaluate(async (url) => {
+        const r = await fetch(url, { credentials: 'include' });
+        return await r.text();
+      }, PLANILHA_CSV);
+      if (!csv2 || csv2.startsWith('<')) { err('Planilha inacessível após login'); return []; }
+      return await _processarCSV(csv2);
     }
 
-    const csv = await _page.locator('body').innerText({ timeout: 10000 });
-
-    if (!csv || csv.startsWith('<') || csv.length < 10) {
-      err('Resposta inválida da planilha');
-      return [];
-    }
-
-    const linhas = parseCSV(csv);
-    if (linhas.length < 2) { aviso('Planilha sem dados'); return []; }
-
-    const processados = carregarProcessados();
-    const pendentes   = [];
-    const tiposValidos = [
-      'fechamento de agenda com reposição',
-      'fechamento de agenda sem reposição',
-      'abertura de horário extra',
-    ];
-
-    for (let i = 1; i < linhas.length; i++) {
-      const row = linhas[i];
-      if (!row || row.length < 10) continue;
-
-      const status = (row[COL.STATUS] || '').trim();
-      if (status !== '' && status !== '~') continue;
-
-      const tipo  = (row[COL.TIPO]  || '').trim();
-      const email = (row[COL.EMAIL] || '').trim().toLowerCase();
-
-      if (!tiposValidos.some(t => tipo.toLowerCase().includes(t))) continue;
-      if (!email) continue;
-
-      const data  = (row[COL.DATA] || '').trim();
-      const chave = `${email}_${data}_${tipo}`.replace(/\s+/g, '_').toLowerCase();
-      if (processados[chave]) continue;
-
-      pendentes.push({
-        rowIndex: i,
-        row,
-        chave,
-        email,
-        nome:  (row[COL.NOME]      || '').trim(),
-        tipo,
-        desc:  (row[COL.DESCRICAO] || '').trim(),
-        data,
-      });
-    }
-
-    pendentes.sort((a, b) => {
-      const td = s => { if (!s) return 0; const [d,m,y] = s.split('/'); return new Date(`${y}-${m}-${d}`); };
-      return td(a.data) - td(b.data);
-    });
-
-    ok(`${pendentes.length} solicitação(ões) pendente(s)`);
-    return pendentes;
+    return _processarCSV(csv);
 
   } catch(e) {
     err('Erro ao ler planilha: ' + e.message);
