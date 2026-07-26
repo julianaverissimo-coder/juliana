@@ -237,9 +237,12 @@ async function lerPendentes() {
   const processados = carregarProcessados();
   const pendentes   = [];
 
-  // DEBUG TEMPORÁRIO — mostra as últimas 5 linhas com dados
+  // DEBUG TEMPORÁRIO
+  inf(`DEBUG | Total linhas CSV: ${linhas.length}`);
+  inf(`DEBUG | Primeiros 200 chars: ${csv.substring(0, 200)}`);
   const ultimasLinhas = linhas.filter(r => r && r.length >= 10 && (r[COL.EMAIL]||'').includes('@')).slice(-5);
-  ultimasLinhas.forEach((r, idx) => inf(`DEBUG | email=${r[COL.EMAIL]} | tipo=${r[COL.TIPO]} | status="${r[COL.STATUS]}"`));
+  inf(`DEBUG | Linhas com email: ${ultimasLinhas.length}`);
+  ultimasLinhas.forEach((r) => inf(`DEBUG | email=${r[COL.EMAIL]} | tipo=${r[COL.TIPO]} | status="${r[COL.STATUS]}"`));
 
   for (let i = 1; i < linhas.length; i++) {
     const row = linhas[i];
