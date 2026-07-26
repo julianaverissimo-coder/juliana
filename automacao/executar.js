@@ -93,7 +93,8 @@ async function garantirNavegador() {
   _ctx  = await chromium.launchPersistentContext(PROFILE_DIR, {
     headless: false,
     channel: 'chrome',
-    args: ['--no-sandbox'],
+    slowMo: 600,
+    args: ['--no-sandbox', '--start-maximized'],
   });
   _page = await _ctx.newPage();
   ok('Chrome pronto');
@@ -309,13 +310,16 @@ async function abrirBackoffice() {
 async function buscarProfissional(page, email) {
   inf(`Buscando: ${email}`);
 
-  // Aguarda qualquer campo de texto aparecer na tela
-  await page.waitForTimeout(1500);
+  // Aguarda a página carregar completamente
+  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForTimeout(2000);
 
-  // Tenta encontrar o campo de busca/nome
+  // Tenta encontrar o campo de busca/nome com timeout maior
   const seletores = [
     'input[placeholder*="Escreva"]',
-    'input[placeholder*="ome"]',
+    'input[placeholder*="escreva"]',
+    'input[placeholder*="Nome"]',
+    'input[placeholder*="nome"]',
     'input[placeholder*="uscar"]',
     'input[placeholder*="mail"]',
     'input[placeholder*="rofissional"]',
@@ -325,18 +329,33 @@ async function buscarProfissional(page, email) {
 
   let campo = null;
   for (const sel of seletores) {
-    const el = page.locator(sel).first();
-    const visivel = await el.isVisible().catch(() => false);
-    if (visivel) { campo = el; inf(`Campo de busca: ${sel}`); break; }
+    try {
+      const el = page.locator(sel).first();
+      await el.waitFor({ state: 'visible', timeout: 3000 });
+      campo = el;
+      inf(`Campo de busca encontrado: ${sel}`);
+      break;
+    } catch {}
   }
 
-  if (!campo) throw new Error('Campo de busca não encontrado na tela de Profissionais');
+  if (!campo) {
+    // Lista todos os inputs visíveis para diagnóstico
+    const inputs = await page.locator('input').all();
+    inf(`Inputs na página: ${inputs.length}`);
+    for (const inp of inputs) {
+      const ph = await inp.getAttribute('placeholder').catch(() => '');
+      const tp = await inp.getAttribute('type').catch(() => '');
+      const vis = await inp.isVisible().catch(() => false);
+      if (vis) inf(`  Input visível — type="${tp}" placeholder="${ph}"`);
+    }
+    throw new Error('Campo de busca não encontrado na tela de Profissionais');
+  }
 
   await campo.clear();
   await campo.fill(email);
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(800);
   await page.keyboard.press('Enter');
-  await page.waitForTimeout(2500);
+  await page.waitForTimeout(3000);
 
   const ativos = await page.locator('text=Ativo').count();
   if (ativos === 0) return 'nao_encontrado';
