@@ -182,7 +182,7 @@ async function atualizarPlanilha(rowIndex, colunas) {
     aviso('APPS_SCRIPT_URL não configurada — planilha não será atualizada automaticamente.');
     return false;
   }
-  const corpo = JSON.stringify({ row: rowIndex + 1, colunas });
+  const corpo = JSON.stringify({ row: rowIndex, colunas });
   const resp  = await httpPost(APPS_SCRIPT_URL, corpo);
   if (!resp) { err('Sem resposta do Apps Script'); return false; }
   try {
@@ -226,56 +226,34 @@ async function enviarEmailAlerta(sol, motivo, detalhe) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  LÊ PLANILHA E FILTRA PENDENTES
+//  LÊ PLANILHA VIA APPS SCRIPT (autenticado, sem precisar ser pública)
 // ═══════════════════════════════════════════════════════════════════
 async function lerPendentes() {
   inf('Verificando planilha (aba PAINEL)...');
-  const csv    = await httpGet(PLANILHA_CSV);
-  const linhas = parseCSV(csv);
-  if (linhas.length < 2) { aviso('Planilha vazia'); return []; }
+
+  if (!APPS_SCRIPT_URL) { aviso('APPS_SCRIPT_URL não configurada'); return []; }
+
+  const resposta = await httpGet(APPS_SCRIPT_URL);
+  if (!resposta) { err('Sem resposta do Apps Script'); return []; }
+
+  let dados;
+  try { dados = JSON.parse(resposta); }
+  catch { err('Resposta inválida do Apps Script: ' + resposta.substring(0, 100)); return []; }
+
+  if (!dados.ok) { err('Apps Script erro: ' + dados.msg); return []; }
 
   const processados = carregarProcessados();
-  const pendentes   = [];
+  const pendentes = (dados.pendentes || []).filter(sol => {
+    const chave = `${sol.email}_${sol.data}_${sol.tipo}`.replace(/\s+/g, '_').toLowerCase();
+    if (processados[chave]) return false;
+    sol.chave    = chave;
+    sol.rowIndex = sol.row; // row já é o número real da linha na planilha
+    return true;
+  });
 
-  // DEBUG TEMPORÁRIO
-  inf(`DEBUG | Total linhas CSV: ${linhas.length}`);
-  inf(`DEBUG | Primeiros 200 chars: ${csv.substring(0, 200)}`);
-  const ultimasLinhas = linhas.filter(r => r && r.length >= 10 && (r[COL.EMAIL]||'').includes('@')).slice(-5);
-  inf(`DEBUG | Linhas com email: ${ultimasLinhas.length}`);
-  ultimasLinhas.forEach((r) => inf(`DEBUG | email=${r[COL.EMAIL]} | tipo=${r[COL.TIPO]} | status="${r[COL.STATUS]}"`));
-
-  for (let i = 1; i < linhas.length; i++) {
-    const row = linhas[i];
-    if (!row || row.length < 10) continue;
-
-    const status = (row[COL.STATUS] || '').trim();
-    // Só processa linhas com Status em branco (~ é o placeholder do dropdown vazio)
-    if (status !== '' && status !== '~') continue;
-
-    const tipo  = (row[COL.TIPO]  || '').trim();
-    const email = (row[COL.EMAIL] || '').trim().toLowerCase();
-    const nome  = (row[COL.NOME]  || '').trim();
-    const desc  = (row[COL.DESCRICAO] || '').trim();
-    const data  = (row[COL.DATA]  || '').trim();
-
-    // Aceita apenas os 3 tipos mapeados
-    const tiposValidos = [
-      'fechamento de agenda com reposição',
-      'fechamento de agenda sem reposição',
-      'abertura de horário extra',
-    ];
-    if (!tiposValidos.some(t => tipo.toLowerCase().includes(t.toLowerCase()))) continue;
-    if (!email) continue;
-
-    const chave = `${email}_${data}_${tipo}`.replace(/\s+/g, '_').toLowerCase();
-    if (processados[chave]) continue;
-
-    pendentes.push({ rowIndex: i, chave, email, nome, tipo, desc, data, row });
-  }
-
-  // Ordem: mais antiga primeiro (por data coluna J)
+  // Ordem: mais antiga primeiro
   pendentes.sort((a, b) => {
-    const toDate = s => { if (!s) return 0; const [d,m,y] = s.split('/'); return new Date(`${y}-${m}-${d}`); };
+    const toDate = s => { if (!s) return 0; const [d,m,y] = (s||'').split('/'); return new Date(`${y}-${m}-${d}`); };
     return toDate(a.data) - toDate(b.data);
   });
 
