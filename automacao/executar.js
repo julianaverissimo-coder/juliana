@@ -21,7 +21,7 @@ const LOG_FILE         = path.join(__dirname, 'log.txt');
 const INTERVALO_MS     = 30 * 60 * 1000; // 30 minutos
 
 // Cole aqui a URL gerada pelo Apps Script após configurar
-const APPS_SCRIPT_URL = '';
+const APPS_SCRIPT_URL = 'https://script.google.com/a/macros/conexasaude.com.br/s/AKfycbzY_GdqVG7mlv0MPyZnlxXPcYo9yLsZReDU6TvBr1ecmQ5LWlL8DoXeVeWTN0pamgY/exec';
 
 // ═══════════════════════════════════════════════════════════════════
 //  COLUNAS DA ABA PAINEL (índice 0 = coluna A)
