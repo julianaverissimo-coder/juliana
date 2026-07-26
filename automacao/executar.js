@@ -271,9 +271,11 @@ async function registrarFalha(rowNum, sol, motivo, detalhe = '') {
 // ═══════════════════════════════════════════════════════════════════
 async function abrirBackoffice() {
   const page = await _ctx.newPage();
-  await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  inf('Abrindo Backoffice...');
+  await page.goto('https://backoffice.conexasaude.com.br', { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.waitForTimeout(2000);
 
+  // Faz login se necessário
   const ehLogin = page.url().includes('login') || page.url().includes('auth') ||
     await page.locator('input[type="email"]').isVisible().catch(() => false);
 
@@ -286,9 +288,22 @@ async function abrirBackoffice() {
     await page.locator('button[type="submit"], button:has-text("Entrar")').first().click();
     await page.waitForTimeout(3000);
     ok('Login realizado');
-    await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(2000);
   }
+
+  // Navega pelo menu lateral: clica em "Profissionais" (item do menu)
+  inf('Clicando em Profissionais no menu...');
+  await page.locator('nav a:has-text("Profissionais"), li:has-text("Profissionais")').first().click();
+  await page.waitForTimeout(1000);
+
+  // Clica no submenu "Profissionais" (segundo clique)
+  const submenu = page.locator('a:has-text("Profissionais"), li:has-text("Profissionais")');
+  const count = await submenu.count();
+  if (count > 1) {
+    await submenu.nth(1).click();
+  }
+  await page.waitForTimeout(2000);
+
+  ok('Tela de Profissionais aberta');
   return page;
 }
 
@@ -298,20 +313,17 @@ async function abrirBackoffice() {
 async function buscarProfissional(page, email) {
   inf(`Buscando: ${email}`);
 
-  // Salva screenshot para diagnóstico
-  const scrDir = path.join(__dirname, 'screenshots');
-  if (!fs.existsSync(scrDir)) fs.mkdirSync(scrDir);
-  await page.screenshot({ path: path.join(scrDir, 'backoffice_antes_busca.png'), fullPage: false });
-  inf('Screenshot salvo em screenshots/backoffice_antes_busca.png');
+  // Aguarda qualquer campo de texto aparecer na tela
+  await page.waitForTimeout(1500);
 
-  // Tenta vários seletores possíveis para o campo de busca
+  // Tenta encontrar o campo de busca/nome
   const seletores = [
-    'input[type="search"]',
+    'input[placeholder*="Escreva"]',
+    'input[placeholder*="ome"]',
     'input[placeholder*="uscar"]',
     'input[placeholder*="mail"]',
     'input[placeholder*="rofissional"]',
-    'input[placeholder*="ome"]',
-    'input[placeholder*="iltr"]',
+    'input[type="search"]',
     'input[type="text"]',
   ];
 
@@ -319,20 +331,16 @@ async function buscarProfissional(page, email) {
   for (const sel of seletores) {
     const el = page.locator(sel).first();
     const visivel = await el.isVisible().catch(() => false);
-    if (visivel) { campo = el; inf(`Campo encontrado: ${sel}`); break; }
+    if (visivel) { campo = el; inf(`Campo de busca: ${sel}`); break; }
   }
 
-  if (!campo) {
-    await page.screenshot({ path: path.join(scrDir, 'backoffice_sem_campo.png'), fullPage: true });
-    throw new Error('Campo de busca não encontrado — screenshot salvo');
-  }
+  if (!campo) throw new Error('Campo de busca não encontrado na tela de Profissionais');
 
   await campo.clear();
   await campo.fill(email);
   await page.waitForTimeout(500);
   await page.keyboard.press('Enter');
   await page.waitForTimeout(2500);
-  await page.screenshot({ path: path.join(scrDir, 'backoffice_apos_busca.png'), fullPage: false });
 
   const ativos = await page.locator('text=Ativo').count();
   if (ativos === 0) return 'nao_encontrado';
