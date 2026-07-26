@@ -142,9 +142,10 @@ async function lerPendentes() {
     await _page.waitForTimeout(2000);
 
     // Verifica se foi redirecionado para login
-    if (_page.url().includes('accounts.google.com') || _page.url().includes('signin')) {
+    const urlAtual = _page.url();
+    if (urlAtual.includes('accounts.google.com') || urlAtual.includes('signin')) {
       aviso('Chrome precisa de login no Google. Faça login na janela do Chrome e aguarde...');
-      await _page.waitForURL(url => !url.includes('accounts.google.com'), { timeout: 120000 });
+      await _page.waitForURL(u => !String(u).includes('accounts.google.com'), { timeout: 180000 });
       await _page.goto(PLANILHA_CSV, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await _page.waitForTimeout(2000);
     }
