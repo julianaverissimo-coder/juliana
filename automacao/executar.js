@@ -90,7 +90,7 @@ async function garantirNavegador() {
   _ctx  = await chromium.launchPersistentContext(PROFILE_DIR, {
     headless: false,
     channel: 'chrome',
-    args: ['--no-sandbox', '--start-minimized'],
+    args: ['--no-sandbox'],
   });
   _page = await _ctx.newPage();
   ok('Chrome pronto');
@@ -297,13 +297,43 @@ async function abrirBackoffice() {
 // ═══════════════════════════════════════════════════════════════════
 async function buscarProfissional(page, email) {
   inf(`Buscando: ${email}`);
-  const campo = page.locator('input[type="search"], input[placeholder*="uscar"], input[placeholder*="mail"]').first();
-  await campo.waitFor({ timeout: 10000 });
+
+  // Salva screenshot para diagnóstico
+  const scrDir = path.join(__dirname, 'screenshots');
+  if (!fs.existsSync(scrDir)) fs.mkdirSync(scrDir);
+  await page.screenshot({ path: path.join(scrDir, 'backoffice_antes_busca.png'), fullPage: false });
+  inf('Screenshot salvo em screenshots/backoffice_antes_busca.png');
+
+  // Tenta vários seletores possíveis para o campo de busca
+  const seletores = [
+    'input[type="search"]',
+    'input[placeholder*="uscar"]',
+    'input[placeholder*="mail"]',
+    'input[placeholder*="rofissional"]',
+    'input[placeholder*="ome"]',
+    'input[placeholder*="iltr"]',
+    'input[type="text"]',
+  ];
+
+  let campo = null;
+  for (const sel of seletores) {
+    const el = page.locator(sel).first();
+    const visivel = await el.isVisible().catch(() => false);
+    if (visivel) { campo = el; inf(`Campo encontrado: ${sel}`); break; }
+  }
+
+  if (!campo) {
+    await page.screenshot({ path: path.join(scrDir, 'backoffice_sem_campo.png'), fullPage: true });
+    throw new Error('Campo de busca não encontrado — screenshot salvo');
+  }
+
   await campo.clear();
   await campo.fill(email);
   await page.waitForTimeout(500);
   await page.keyboard.press('Enter');
   await page.waitForTimeout(2500);
+  await page.screenshot({ path: path.join(scrDir, 'backoffice_apos_busca.png'), fullPage: false });
+
   const ativos = await page.locator('text=Ativo').count();
   if (ativos === 0) return 'nao_encontrado';
   if (ativos > 1)   return 'multiplos_ativos';
