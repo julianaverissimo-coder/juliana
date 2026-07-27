@@ -12,10 +12,10 @@ const LOGIN_BACKOFFICE = {
 };
 
 const EMAIL_ALERTA     = 'juliana.verissimo@conexasaude.com.br';
+const PLANILHA_URL     = 'https://docs.google.com/spreadsheets/d/1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8/edit#gid=1809280439';
 const PLANILHA_CSV     = 'https://docs.google.com/spreadsheets/d/1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8/gviz/tq?tqx=out:csv&gid=1809280439';
 const BACKOFFICE_URL   = 'https://backoffice.conexasaude.com.br/profissional/consulta';
-const APPS_SCRIPT_URL  = 'https://script.google.com/a/macros/conexasaude.com.br/s/AKfycbzY_GdqVG7mlv0MPyZnlxXPcYo9yLsZReDU6TvBr1ecmQ5LWlL8DoXeVeWTN0pamgY/exec';
-const PROFILE_DIR      = path.join(__dirname, 'chrome_profile'); // sessão salva aqui
+const PROFILE_DIR      = path.join(__dirname, 'chrome_profile');
 const PROCESSADOS_FILE = path.join(__dirname, 'processados.json');
 const LOG_FILE         = path.join(__dirname, 'log.txt');
 const INTERVALO_MS     = 30 * 60 * 1000;
@@ -79,25 +79,40 @@ function salvarProcessado(chave, dados) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  NAVEGADOR — perfil persistente (sessão Google salva entre execuções)
+//  NAVEGADOR — perfil persistente (sessão Google e Backoffice salvas)
 // ═══════════════════════════════════════════════════════════════════
-let _ctx  = null;
-let _page = null; // aba de fundo (planilha + Apps Script)
+let _ctx          = null;
+let _planilhaPage = null;  // aba da planilha Google Sheets
 
 async function garantirNavegador() {
-  // Verifica se o contexto ainda está vivo
   if (_ctx) {
-    try { await _ctx.pages(); return; } catch { _ctx = null; _page = null; }
+    try { await _ctx.pages(); return; } catch { _ctx = null; _planilhaPage = null; }
   }
   inf('Abrindo Chrome com perfil salvo...');
-  _ctx  = await chromium.launchPersistentContext(PROFILE_DIR, {
+  _ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
     headless: false,
     channel: 'chrome',
-    slowMo: 600,
+    slowMo: 400,
     args: ['--no-sandbox', '--start-maximized'],
   });
-  _page = await _ctx.newPage();
   ok('Chrome pronto');
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PLANILHA — abre e mantém a aba do Google Sheets
+// ═══════════════════════════════════════════════════════════════════
+async function abrirPlanilha() {
+  await garantirNavegador();
+  if (_planilhaPage && !_planilhaPage.isClosed()) {
+    const url = _planilhaPage.url();
+    if (url.includes('docs.google.com/spreadsheets')) return _planilhaPage;
+  }
+  _planilhaPage = await _ctx.newPage();
+  inf('Abrindo planilha no Chrome...');
+  await _planilhaPage.goto(PLANILHA_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await _planilhaPage.waitForTimeout(4000);
+  ok('Planilha aberta');
+  return _planilhaPage;
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -161,9 +176,18 @@ function _processarCSV(csv) {
     const data  = (row[COL.DATA] || '').trim();
     const chave = `${email}_${data}_${tipo}`.replace(/\s+/g, '_').toLowerCase();
     if (processados[chave]) continue;
-    pendentes.push({ rowIndex: i, row, chave, email,
-      nome: (row[COL.NOME] || '').trim(), tipo,
-      desc: (row[COL.DESCRICAO] || '').trim(), data });
+    pendentes.push({
+      rowIndex: i,  // 0-based CSV index; rowIndex+1 = número real da linha na planilha
+      row,
+      chave,
+      email,
+      nome:  (row[COL.NOME]      || '').trim(),
+      tipo,
+      desc:  (row[COL.DESCRICAO] || '').trim(),
+      data,
+      hora_ini: (row[COL.HORA_INI] || '').trim(),
+      hora_fim: (row[COL.HORA_FIM] || '').trim(),
+    });
   }
 
   pendentes.sort((a, b) => {
@@ -176,48 +200,20 @@ function _processarCSV(csv) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  LÊ PLANILHA via Chrome autenticado (navega para URL CSV)
+//  LÊ PLANILHA — abre no Chrome e faz fetch autenticado do CSV
 // ═══════════════════════════════════════════════════════════════════
 async function lerPendentes() {
   inf('Verificando planilha (aba PAINEL)...');
-  await garantirNavegador();
+  const planilha = await abrirPlanilha();
 
   try {
-    // Navega para o Apps Script URL — Chrome autenticado como Trabalho acessa diretamente
-    await _page.goto(APPS_SCRIPT_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await _page.waitForTimeout(1500);
+    const csv = await planilha.evaluate(async (url) => {
+      const r = await fetch(url, { credentials: 'include' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    }, PLANILHA_CSV);
 
-    const corpo = await _page.locator('body').innerText({ timeout: 10000 });
-
-    if (!corpo || corpo.startsWith('<')) {
-      err('Apps Script retornou HTML — verifique se o Chrome está logado');
-      return [];
-    }
-
-    let dados;
-    try { dados = JSON.parse(corpo); }
-    catch { err('Resposta inválida: ' + corpo.substring(0, 100)); return []; }
-
-    if (!dados.ok) { err('Apps Script: ' + dados.msg); return []; }
-
-    const processados = carregarProcessados();
-    const pendentes   = (dados.pendentes || []).filter(sol => {
-      const chave = `${sol.email}_${sol.data}_${sol.tipo}`.replace(/\s+/g, '_').toLowerCase();
-      if (processados[chave]) return false;
-      sol.chave    = chave;
-      sol.rowIndex = sol.row;
-      sol.row      = sol; // compatibilidade com executarAbertura
-      return true;
-    });
-
-    pendentes.sort((a, b) => {
-      const td = s => { if (!s) return 0; const [d,m,y] = (s||'').split('/'); return new Date(`${y}-${m}-${d}`); };
-      return td(a.data) - td(b.data);
-    });
-
-    ok(`${pendentes.length} solicitação(ões) pendente(s)`);
-    return pendentes;
-
+    return _processarCSV(csv);
   } catch(e) {
     err('Erro ao ler planilha: ' + e.message);
     return [];
@@ -225,26 +221,71 @@ async function lerPendentes() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  ESCREVE NA PLANILHA via Apps Script (navegação autenticada)
+//  ESCREVE NA PLANILHA — navega até a célula e digita o valor
 // ═══════════════════════════════════════════════════════════════════
+async function navegarParaCelula(planilha, letra, row) {
+  await planilha.bringToFront();
+  await planilha.keyboard.press('Escape');
+  await planilha.waitForTimeout(300);
+
+  // Tenta clicar na Caixa de Nome (Name Box) — top-left da planilha
+  const seletores = [
+    '.docs-name-box input',
+    '.docs-name-box',
+    '[aria-label="Name Box"]',
+    '.cell-input',
+  ];
+  let clicou = false;
+  for (const sel of seletores) {
+    clicou = await planilha.locator(sel).first().click({ timeout: 2000 })
+      .then(() => true).catch(() => false);
+    if (clicou) break;
+  }
+  if (!clicou) {
+    // Fallback: Ctrl+Home depois navegar com atalho
+    await planilha.keyboard.press('Control+Home');
+    await planilha.waitForTimeout(300);
+  }
+
+  await planilha.waitForTimeout(200);
+  await planilha.keyboard.press('Control+a');
+  await planilha.keyboard.type(`${letra}${row}`);
+  await planilha.keyboard.press('Enter');
+  await planilha.waitForTimeout(500);
+}
+
+async function escreverNaCelula(letra, row, valor) {
+  const planilha = await abrirPlanilha();
+  await navegarParaCelula(planilha, letra, row);
+  await planilha.keyboard.type(String(valor));
+  await planilha.keyboard.press('Tab');
+  await planilha.waitForTimeout(300);
+  inf(`  ✎ ${letra}${row} = "${valor}"`);
+}
+
+function colLetra(idx) {
+  return String.fromCharCode(65 + parseInt(idx));
+}
+
 async function atualizarPlanilha(rowNum, colunas) {
   try {
-    // Navega para o Apps Script com os dados como query param
-    const params = encodeURIComponent(JSON.stringify({ row: rowNum, colunas }));
-    const url = `${APPS_SCRIPT_URL}?dados=${params}`;
-    await _page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await _page.waitForTimeout(1000);
-    const resp = await _page.locator('body').innerText({ timeout: 5000 }).catch(() => '');
-    const r = JSON.parse(resp);
-    if (r.ok) { ok(`Planilha atualizada: linha ${rowNum}`); return true; }
-    err('Apps Script: ' + r.msg);
+    for (const [colIdx, valor] of Object.entries(colunas)) {
+      await escreverNaCelula(colLetra(colIdx), rowNum, valor);
+    }
+    // Salva com Ctrl+S
+    const planilha = await abrirPlanilha();
+    await planilha.keyboard.press('Control+s');
+    await planilha.waitForTimeout(500);
+    ok(`Planilha atualizada: linha ${rowNum}`);
+    return true;
   } catch(e) {
     err('Erro ao atualizar planilha: ' + e.message);
+    return false;
   }
-  return false;
 }
 
 async function registrarSucesso(rowNum, sol) {
+  inf('Registrando sucesso na planilha...');
   await atualizarPlanilha(rowNum, {
     [COL.STATUS]:    'Aprovado',
     [COL.ANALISTA]:  'AGENTE DE IA',
@@ -255,26 +296,20 @@ async function registrarSucesso(rowNum, sol) {
 }
 
 async function registrarFalha(rowNum, sol, motivo, detalhe = '') {
-  // Trunca detalhe para não gerar URL gigante
+  inf('Registrando falha na planilha...');
   const detalheCurto = String(detalhe || motivo).substring(0, 120);
   await atualizarPlanilha(rowNum, {
+    [COL.STATUS]:     'Reprovado',
+    [COL.ANALISTA]:   'AGENTE DE IA',
+    [COL.DATA_EXEC]:  agoraData(),
+    [COL.HORA_EXEC]:  agoraHorario(),
     [COL.AGENTE]:     `NÃO REALIZADO - ${motivo}`,
     [COL.OBSERVACAO]: detalheCurto,
   });
-  // Envia e-mail de alerta via Apps Script
-  try {
-    await garantirNavegador();
-    const emailParams = encodeURIComponent(JSON.stringify({
-      acao: 'email', para: EMAIL_ALERTA,
-      assunto: `[AGENTE IA] NÃO REALIZADO — ${sol.nome || sol.email}`,
-      mensagem: `Médico: ${sol.nome || '-'}\nE-mail: ${sol.email}\nTipo: ${sol.tipo}\nMotivo: ${motivo}\nDetalhe: ${detalheCurto}\nHorário: ${agoraFormatado()}`,
-    }));
-    await _page.goto(`${APPS_SCRIPT_URL}?dados=${emailParams}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
-  } catch {}
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  LOGIN NO BACKOFFICE
+//  BACKOFFICE — abre em aba separada
 // ═══════════════════════════════════════════════════════════════════
 async function abrirBackoffice() {
   const page = await _ctx.newPage();
@@ -282,7 +317,6 @@ async function abrirBackoffice() {
   await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.waitForTimeout(2000);
 
-  // Faz login se necessário
   const ehLogin = page.url().includes('login') || page.url().includes('auth') ||
     await page.locator('input[type="email"]').isVisible().catch(() => false);
 
@@ -295,7 +329,6 @@ async function abrirBackoffice() {
     await page.locator('button[type="submit"], button:has-text("Entrar")').first().click();
     await page.waitForTimeout(3000);
     ok('Login realizado');
-    // Após login, navega direto para a lista de profissionais
     await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
   }
@@ -310,11 +343,9 @@ async function abrirBackoffice() {
 async function buscarProfissional(page, email) {
   inf(`Buscando: ${email}`);
 
-  // Aguarda a página carregar completamente
   await page.waitForLoadState('networkidle').catch(() => {});
   await page.waitForTimeout(2000);
 
-  // Tenta encontrar o campo de busca/nome com timeout maior
   const seletores = [
     'input[placeholder*="Escreva"]',
     'input[placeholder*="escreva"]',
@@ -333,22 +364,21 @@ async function buscarProfissional(page, email) {
       const el = page.locator(sel).first();
       await el.waitFor({ state: 'visible', timeout: 3000 });
       campo = el;
-      inf(`Campo de busca encontrado: ${sel}`);
+      inf(`Campo de busca: ${sel}`);
       break;
     } catch {}
   }
 
   if (!campo) {
-    // Lista todos os inputs visíveis para diagnóstico
     const inputs = await page.locator('input').all();
-    inf(`Inputs na página: ${inputs.length}`);
+    inf(`Inputs visíveis na página:`);
     for (const inp of inputs) {
-      const ph = await inp.getAttribute('placeholder').catch(() => '');
-      const tp = await inp.getAttribute('type').catch(() => '');
+      const ph  = await inp.getAttribute('placeholder').catch(() => '');
+      const tp  = await inp.getAttribute('type').catch(() => '');
       const vis = await inp.isVisible().catch(() => false);
-      if (vis) inf(`  Input visível — type="${tp}" placeholder="${ph}"`);
+      if (vis) inf(`  type="${tp}" placeholder="${ph}"`);
     }
-    throw new Error('Campo de busca não encontrado na tela de Profissionais');
+    throw new Error('Campo de busca não encontrado');
   }
 
   await campo.clear();
@@ -414,9 +444,9 @@ async function executarFechamento(page, sol, comReposicao) {
 //  FLUXO B — ABERTURA DE HORÁRIO EXTRA
 // ═══════════════════════════════════════════════════════════════════
 async function executarAbertura(page, sol) {
-  const data     = (sol.row[COL.DATA]     || '').trim();
-  const hora_ini = (sol.row[COL.HORA_INI] || '').trim();
-  const hora_fim = (sol.row[COL.HORA_FIM] || '').trim();
+  const data     = sol.hora_ini ? sol.data     : (sol.row[COL.DATA]     || '').trim();
+  const hora_ini = sol.hora_ini || (sol.row[COL.HORA_INI] || '').trim();
+  const hora_fim = sol.hora_fim || (sol.row[COL.HORA_FIM] || '').trim();
   if (!data) throw new Error('Data não encontrada na planilha');
 
   const linhaAtiva = page.locator('tr').filter({ hasText: 'Ativo' }).last();
@@ -476,7 +506,7 @@ async function processarSolicitacao(sol) {
       return false;
     }
 
-    ok('1 perfil ativo');
+    ok('1 perfil ativo encontrado');
     const tipo = sol.tipo.toLowerCase();
 
     if (tipo.includes('fechamento') && !tipo.includes('sem reposição')) {
@@ -515,9 +545,9 @@ async function ciclo() {
   catch(e) { err('Erro ao ler planilha: ' + e.message); return; }
 
   for (const sol of pendentes) {
-    const ok_ = await processarSolicitacao(sol);
-    if (ok_) ok(`Linha ${sol.rowIndex + 1} processada.`);
-    else aviso(`Linha ${sol.rowIndex + 1} não processada — time notificado.`);
+    const sucesso = await processarSolicitacao(sol);
+    if (sucesso) ok(`Linha ${sol.rowIndex + 1} processada com sucesso.`);
+    else aviso(`Linha ${sol.rowIndex + 1} não processada — registrado na planilha.`);
     await new Promise(r => setTimeout(r, 3000));
   }
   inf('Próxima verificação em 30 minutos.');
@@ -530,16 +560,12 @@ async function iniciar() {
   console.log('\x1b[35m');
   console.log('╔══════════════════════════════════════════════════╗');
   console.log('║   AGENTE DE IA — AUTOMAÇÃO AGENDA CONEXA         ║');
-  console.log('║   Polling: 30 min  |  Sem restrição de horário   ║');
-  console.log('║   Fluxos: Fechamento (c/s reposição) + Abertura  ║');
+  console.log('║   Lê e escreve na planilha via Chrome autenticado ║');
   console.log('╚══════════════════════════════════════════════════╝');
   console.log('\x1b[0m');
-  inf('Monitorando... pressione Ctrl+C para parar.');
-  gravar('=== AGENTE INICIADO ===');
-  sep();
-  await garantirNavegador();
+
   await ciclo();
   setInterval(ciclo, INTERVALO_MS);
 }
 
-iniciar();
+iniciar().catch(e => { err('Falha crítica: ' + e.message); process.exit(1); });
