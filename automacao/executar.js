@@ -573,7 +573,16 @@ async function iniciar() {
   console.log('╚══════════════════════════════════════════════════╝');
   console.log('\x1b[0m');
 
+  const rodarUmaVez = process.argv.includes('--once');
+
   await ciclo();
+
+  if (rodarUmaVez) {
+    inf('Modo --once: encerrando após um ciclo (chamado externamente, ex: n8n).');
+    if (_ctx) await _ctx.close().catch(() => {});
+    process.exit(0);
+  }
+
   setInterval(ciclo, INTERVALO_MS);
 }
 
