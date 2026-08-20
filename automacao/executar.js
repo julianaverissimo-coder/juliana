@@ -158,10 +158,9 @@ function _processarCSV(csv) {
 
   const processados  = carregarProcessados();
   const pendentes    = [];
+  // FASE 1: apenas fechamento sem reposição, para validar o fluxo com casos reais
   const tiposValidos = [
-    'fechamento de agenda com reposição',
     'fechamento de agenda sem reposição',
-    'abertura de horário extra',
   ];
 
   for (let i = 1; i < linhas.length; i++) {
