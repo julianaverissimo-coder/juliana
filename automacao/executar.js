@@ -41,6 +41,29 @@ const COL = {
 };
 
 // ═══════════════════════════════════════════════════════════════════
+//  VALORES FIXOS DAS LISTAS SUSPENSAS DA PLANILHA
+//  (coluna N = Status, coluna S = AGENTE DE IA — precisam bater exato)
+// ═══════════════════════════════════════════════════════════════════
+const STATUS = {
+  APROVADO: 'Aprovado',
+  REPROVADO: 'Reprovado',
+};
+
+const AGENTE = {
+  REALIZADO:              'REALIZADO',
+  DOIS_PERFIS_ATIVOS:     'NÃO REALIZADO - 2 perfis ativos',
+  MEDICO_NAO_ENCONTRADO:  'NÃO REALIZADO - Médico não encontrado',
+  PERFIL_INATIVO:         'NÃO REALIZADO - Perfil inativo',
+  ERRO_TECNICO:           'NÃO REALIZADO - Erro técnico',
+  TELA_INESPERADA:        'NÃO REALIZADO - Tela inesperada',
+  NAO_AUTORIZADO_GESTAO:  'NÃO REALIZADO - Não autorizado pela gestão medica.',
+  AGENDA_QUINZENAL:       'NÃO REALIZADO - Não realizamos agenda quinzenal',
+  JA_REALIZADA_ANTES:     'NÃO REALIZADO - Ação já realizada antes',
+  SEM_INFORMACOES:        'NÃO REALIZADO - Sem informações necessarias',
+  FORA_DO_PRAZO:          'NÃO REALIZADO - Fora do prazo',
+};
+
+// ═══════════════════════════════════════════════════════════════════
 //  LOG
 // ═══════════════════════════════════════════════════════════════════
 const ok    = (m) => { console.log(`\x1b[32m✓ ${m}\x1b[0m`);  gravar(`OK    | ${m}`); };
@@ -63,6 +86,18 @@ function agora() {
 function agoraFormatado() { return agora().toLocaleString('pt-BR'); }
 function agoraData()      { return agora().toLocaleDateString('pt-BR'); }
 function agoraHorario()   { return agora().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
+
+function dataJaPassou(dataStr) {
+  if (!dataStr) return false;
+  const [d, m, y] = dataStr.split('/');
+  if (!d || !m || !y) return false;
+  const dataAlvo = new Date(`${y}-${m}-${d}T23:59:59`);
+  return dataAlvo.getTime() < agora().getTime();
+}
+
+function emailValido(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+}
 
 // ═══════════════════════════════════════════════════════════════════
 //  PROCESSADOS
@@ -173,8 +208,14 @@ function _processarCSV(csv) {
     if (!tiposValidos.some(t => tipo.toLowerCase().includes(t))) continue;
     if (!email) continue;
     const data  = (row[COL.DATA] || '').trim();
+
+    // Regra: data já passada — não processa, deixa para humano, pula a linha inteira
+    if (dataJaPassou(data)) {
+      aviso(`Linha ${i + 1} ignorada — data (${data}) já passou. Deixado para análise humana.`);
+      continue;
+    }
+
     const chave = `${email}_${data}_${tipo}`.replace(/\s+/g, '_').toLowerCase();
-    if (processados[chave]) continue;
     pendentes.push({
       rowIndex: i,  // 0-based CSV index; rowIndex+1 = número real da linha na planilha
       row,
@@ -186,6 +227,8 @@ function _processarCSV(csv) {
       data,
       hora_ini: (row[COL.HORA_INI] || '').trim(),
       hora_fim: (row[COL.HORA_FIM] || '').trim(),
+      // Já tentado antes (ex: crash no meio da execução anterior) — registrar em vez de ignorar
+      jaProcessadoAntes: !!processados[chave],
     });
   }
 
@@ -286,23 +329,24 @@ async function atualizarPlanilha(rowNum, colunas) {
 async function registrarSucesso(rowNum, sol) {
   inf('Registrando sucesso na planilha...');
   await atualizarPlanilha(rowNum, {
-    [COL.STATUS]:    'Aprovado',
+    [COL.STATUS]:    STATUS.APROVADO,
     [COL.ANALISTA]:  'AGENTE DE IA',
     [COL.DATA_EXEC]: agoraData(),
     [COL.HORA_EXEC]: agoraHorario(),
-    [COL.AGENTE]:    'REALIZADO',
+    [COL.AGENTE]:    AGENTE.REALIZADO,
   });
 }
 
-async function registrarFalha(rowNum, sol, motivo, detalhe = '') {
+// categoriaAgente deve ser um dos valores exatos de AGENTE (lista suspensa da coluna S)
+async function registrarFalha(rowNum, sol, categoriaAgente, detalhe = '') {
   inf('Registrando falha na planilha...');
-  const detalheCurto = String(detalhe || motivo).substring(0, 120);
+  const detalheCurto = String(detalhe || categoriaAgente).substring(0, 120);
   await atualizarPlanilha(rowNum, {
-    [COL.STATUS]:     'Reprovado',
+    [COL.STATUS]:     STATUS.REPROVADO,
     [COL.ANALISTA]:   'AGENTE DE IA',
     [COL.DATA_EXEC]:  agoraData(),
     [COL.HORA_EXEC]:  agoraHorario(),
-    [COL.AGENTE]:     `NÃO REALIZADO - ${motivo}`,
+    [COL.AGENTE]:     categoriaAgente,
     [COL.OBSERVACAO]: detalheCurto,
   });
 }
@@ -342,54 +386,46 @@ async function abrirBackoffice() {
 async function buscarProfissional(page, email) {
   inf(`Buscando: ${email}`);
 
+  if (!emailValido(email)) {
+    aviso('E-mail com formato inválido.');
+    return 'sem_informacoes';
+  }
+
   await page.waitForLoadState('networkidle').catch(() => {});
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(1500);
 
-  const seletores = [
-    'input[placeholder*="Escreva"]',
-    'input[placeholder*="escreva"]',
-    'input[placeholder*="Nome"]',
-    'input[placeholder*="nome"]',
-    'input[placeholder*="uscar"]',
-    'input[placeholder*="mail"]',
-    'input[placeholder*="rofissional"]',
-    'input[type="search"]',
-    'input[type="text"]',
-  ];
-
-  let campo = null;
-  for (const sel of seletores) {
-    try {
-      const el = page.locator(sel).first();
-      await el.waitFor({ state: 'visible', timeout: 3000 });
-      campo = el;
-      inf(`Campo de busca: ${sel}`);
-      break;
-    } catch {}
-  }
-
-  if (!campo) {
-    const inputs = await page.locator('input').all();
-    inf(`Inputs visíveis na página:`);
-    for (const inp of inputs) {
-      const ph  = await inp.getAttribute('placeholder').catch(() => '');
-      const tp  = await inp.getAttribute('type').catch(() => '');
-      const vis = await inp.isVisible().catch(() => false);
-      if (vis) inf(`  type="${tp}" placeholder="${ph}"`);
-    }
-    throw new Error('Campo de busca não encontrado');
-  }
-
+  const campo = page.getByPlaceholder('Digite o nome do profissional, e-mail ou CPF');
+  await campo.waitFor({ state: 'visible', timeout: 10000 });
   await campo.clear();
   await campo.fill(email);
-  await page.waitForTimeout(800);
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(300);
 
-  const ativos = await page.locator('text=Ativo').count();
-  if (ativos === 0) return 'nao_encontrado';
-  if (ativos > 1)   return 'multiplos_ativos';
-  return 'ok';
+  // Botão de busca (lupa roxa) — fica logo ao lado do campo, não usar Enter
+  const botaoBusca = campo.locator('xpath=following::button[1]');
+  await botaoBusca.click({ timeout: 5000 }).catch(async () => {
+    await page.keyboard.press('Enter'); // fallback caso o botão não seja localizado
+  });
+  await page.waitForTimeout(2500);
+
+  // Conta quantas linhas de resultado existem na tabela
+  const linhas = page.locator('table tbody tr, [role="row"]').filter({ hasNotText: 'ID Profissional' });
+  const totalLinhas = await linhas.count();
+
+  if (totalLinhas === 0) {
+    return 'nao_encontrado';
+  }
+  if (totalLinhas > 1) {
+    aviso(`${totalLinhas} resultados encontrados para o e-mail — ambíguo.`);
+    return 'sem_informacoes';
+  }
+
+  // Exatamente 1 linha — verifica o status dela
+  const statusTexto = (await linhas.first().locator('text=/Ativo|Inativo|Bloqueado/i').first().innerText().catch(() => '')).trim();
+  if (/ativo/i.test(statusTexto) && !/inativo/i.test(statusTexto)) {
+    return 'ok';
+  }
+  aviso(`Perfil encontrado, mas status é "${statusTexto || 'desconhecido'}" (não Ativo).`);
+  return 'perfil_inativo';
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -410,33 +446,41 @@ async function executarFechamento(page, sol, comReposicao) {
   await page.locator('text=Ausências').click();
   await page.waitForTimeout(1500);
 
-  await page.locator('input[placeholder*="motivo"], input[placeholder*="evento"]').first().fill('FORMS');
+  // Campos confirmados na tela real de "Programação de ausência"
+  await page.getByLabel('Nome do evento').fill('FORMS');
+  await page.getByLabel('Data inicial').fill(dados.data_ini);
+  await page.getByLabel('Hora inicial').fill(dados.hora_ini);
+  await page.getByLabel('Data final').fill(dados.data_fim);
+  await page.getByLabel('Hora final').fill(dados.hora_fim);
 
-  const camposData = await page.locator('input[placeholder*="DD/MM"], input[placeholder*="dd/mm"], input[type="date"]').all();
-  if (camposData[0]) { await camposData[0].fill(dados.data_ini); await page.keyboard.press('Tab'); }
-
-  const camposHora = await page.locator('input[placeholder*="HH:MM"], input[placeholder*="hh:mm"]').all();
-  if (camposHora[0]) await camposHora[0].fill(dados.hora_ini);
-  if (camposData[1]) { await camposData[1].fill(dados.data_fim); await page.keyboard.press('Tab'); }
-  if (camposHora[1]) await camposHora[1].fill(dados.hora_fim);
-
-  await page.locator('label:has-text("Reagendar"), input[type="radio"] + label:has-text("Reagendar")').first().click().catch(() => {});
-
-  if (comReposicao && dados.rep_data) {
-    await page.locator('button:has-text("Adicionar período"), button:has-text("Adicionar")').first().click();
-    await page.waitForTimeout(1000);
-    const repData = await page.locator('input[placeholder*="DD/MM"], input[placeholder*="dd/mm"]').all();
-    if (repData[repData.length - 1]) { await repData[repData.length - 1].fill(dados.rep_data); await page.keyboard.press('Tab'); }
-    const repHora = await page.locator('input[placeholder*="HH:MM"], input[placeholder*="hh:mm"]').all();
-    if (repHora[repHora.length - 2]) await repHora[repHora.length - 2].fill(dados.rep_hora_ini);
-    if (repHora[repHora.length - 1]) await repHora[repHora.length - 1].fill(dados.rep_hora_fim);
-    ok(`Reposição: ${dados.rep_data} ${dados.rep_hora_ini}–${dados.rep_hora_fim}`);
+  if (comReposicao) {
+    // FASE 1 ainda não cobre o fluxo COM reposição — implementar quando validado
+    throw new Error('Fluxo com reposição ainda não validado nesta fase');
   }
+
+  // Fase 1: fechamento SEM reposição — marca "Reagendar atendimento conflitante" (confirmado com a Juliana)
+  await page.getByText('Reagendar atendimento conflitante').click();
 
   await page.waitForTimeout(500);
   await page.locator('button:has-text("Programar")').click();
-  await page.waitForTimeout(3000);
-  ok(`Fechamento programado — ${sol.nome || sol.email}`);
+  await page.waitForTimeout(1000);
+
+  // Modal de confirmação: "Programar ausência?" → "Sim, programar"
+  const modalConfirmar = page.getByRole('button', { name: 'Sim, programar' });
+  const apareceuModal  = await modalConfirmar.isVisible({ timeout: 5000 }).catch(() => false);
+  if (!apareceuModal) {
+    throw new Error('Modal de confirmação "Programar ausência?" não apareceu — tela inesperada');
+  }
+  await modalConfirmar.click();
+  await page.waitForTimeout(2000);
+
+  // Validação real de sucesso: o modal deve fechar sem erro visível
+  const modalAindaAberto = await modalConfirmar.isVisible().catch(() => false);
+  if (modalAindaAberto) {
+    throw new Error('Modal não fechou após confirmar — possível erro do sistema');
+  }
+
+  ok(`Fechamento programado e confirmado — ${sol.nome || sol.email}`);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -498,6 +542,12 @@ async function processarSolicitacao(sol) {
     await planilha.waitForTimeout(300);
   } catch {}
 
+  // Já tentado antes (ex: crash na execução anterior deixou o Status em branco de novo)
+  if (sol.jaProcessadoAntes) {
+    await registrarFalha(sol.rowIndex + 1, sol, AGENTE.JA_REALIZADA_ANTES, 'Solicitação já havia sido processada anteriormente.');
+    return false;
+  }
+
   let page;
   try {
     page = await abrirBackoffice();
@@ -505,27 +555,29 @@ async function processarSolicitacao(sol) {
 
     if (resultado === 'nao_encontrado') {
       await page.close();
-      await registrarFalha(sol.rowIndex + 1, sol, 'Médico não encontrado', `E-mail: ${sol.email}`);
+      await registrarFalha(sol.rowIndex + 1, sol, AGENTE.MEDICO_NAO_ENCONTRADO, `E-mail: ${sol.email}`);
       return false;
     }
-    if (resultado === 'multiplos_ativos') {
+    if (resultado === 'perfil_inativo') {
       await page.close();
-      await registrarFalha(sol.rowIndex + 1, sol, '2 perfis ativos', 'Verificar manualmente');
+      await registrarFalha(sol.rowIndex + 1, sol, AGENTE.PERFIL_INATIVO, `E-mail: ${sol.email}`);
+      return false;
+    }
+    if (resultado === 'sem_informacoes') {
+      await page.close();
+      await registrarFalha(sol.rowIndex + 1, sol, AGENTE.SEM_INFORMACOES, 'Múltiplos perfis, e-mail inválido, ou caso ambíguo.');
       return false;
     }
 
     ok('1 perfil ativo encontrado');
     const tipo = sol.tipo.toLowerCase();
 
-    if (tipo.includes('fechamento') && !tipo.includes('sem reposição')) {
-      await executarFechamento(page, sol, true);
-    } else if (tipo.includes('fechamento') && tipo.includes('sem reposição')) {
+    // FASE 1: apenas fechamento sem reposição
+    if (tipo.includes('fechamento') && tipo.includes('sem reposição')) {
       await executarFechamento(page, sol, false);
-    } else if (tipo.includes('abertura')) {
-      await executarAbertura(page, sol);
     } else {
       await page.close();
-      await registrarFalha(sol.rowIndex + 1, sol, 'Tipo não reconhecido', sol.tipo);
+      await registrarFalha(sol.rowIndex + 1, sol, AGENTE.TELA_INESPERADA, `Tipo fora do escopo da Fase 1: ${sol.tipo}`);
       return false;
     }
 
@@ -538,7 +590,7 @@ async function processarSolicitacao(sol) {
   } catch(e) {
     err(`Erro: ${e.message}`);
     if (page) await page.close().catch(() => {});
-    await registrarFalha(sol.rowIndex + 1, sol, 'Erro técnico', e.message);
+    await registrarFalha(sol.rowIndex + 1, sol, AGENTE.ERRO_TECNICO, e.message);
     return false;
   }
 }
