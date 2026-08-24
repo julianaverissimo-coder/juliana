@@ -128,7 +128,7 @@ async function garantirNavegador() {
   _ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
     headless: false,
     channel: 'chrome',
-    slowMo: 400,
+    slowMo: 900,
     args: ['--no-sandbox', '--start-maximized'],
   });
   ok('Chrome pronto');
@@ -137,6 +137,11 @@ async function garantirNavegador() {
 // ═══════════════════════════════════════════════════════════════════
 //  PLANILHA — abre e mantém a aba do Google Sheets
 // ═══════════════════════════════════════════════════════════════════
+// Desenha um contorno colorido ao redor do elemento por um instante, para acompanhar visualmente
+async function destacar(locator) {
+  try { await locator.highlight(); } catch {}
+}
+
 function aguardarEnter(mensagem) {
   return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -421,12 +426,14 @@ async function buscarProfissional(page, email) {
 
   const campo = page.getByPlaceholder('Digite o nome do profissional, e-mail ou CPF');
   await campo.waitFor({ state: 'visible', timeout: 10000 });
+  await destacar(campo);
   await campo.clear();
   await campo.fill(email);
   await page.waitForTimeout(300);
 
   // Botão de busca (lupa roxa) — fica logo ao lado do campo, não usar Enter
   const botaoBusca = campo.locator('xpath=following::button[1]');
+  await destacar(botaoBusca);
   await botaoBusca.click({ timeout: 5000 }).catch(async () => {
     await page.keyboard.press('Enter'); // fallback caso o botão não seja localizado
   });
@@ -462,21 +469,37 @@ async function executarFechamento(page, sol, comReposicao) {
 
   inf('Abrindo menu ⋮...');
   const linhaAtiva = page.locator('tr').filter({ hasText: 'Ativo' }).last();
-  await linhaAtiva.locator('button').last().click();
+  const botaoMenu  = linhaAtiva.locator('button').last();
+  await destacar(botaoMenu);
+  await botaoMenu.click();
   await page.waitForTimeout(800);
 
-  await page.locator('[role="menuitem"]:has-text("Agenda"), li:has-text("Agenda"), a:has-text("Agenda")').last().click();
+  const itemAgenda = page.locator('[role="menuitem"]:has-text("Agenda"), li:has-text("Agenda"), a:has-text("Agenda")').last();
+  await destacar(itemAgenda);
+  await itemAgenda.click();
   await page.waitForTimeout(2000);
 
-  await page.locator('text=Ausências').click();
+  const abaAusencias = page.locator('text=Ausências');
+  await destacar(abaAusencias);
+  await abaAusencias.click();
   await page.waitForTimeout(1500);
 
   // Campos confirmados na tela real de "Programação de ausência"
-  await page.getByLabel('Nome do evento').fill('FORMS');
-  await page.getByLabel('Data inicial').fill(dados.data_ini);
-  await page.getByLabel('Hora inicial').fill(dados.hora_ini);
-  await page.getByLabel('Data final').fill(dados.data_fim);
-  await page.getByLabel('Hora final').fill(dados.hora_fim);
+  inf(`Preenchendo: FORMS | ${dados.data_ini} ${dados.hora_ini} até ${dados.data_fim} ${dados.hora_fim}`);
+  const campoNome = page.getByLabel('Nome do evento');
+  await destacar(campoNome); await campoNome.fill('FORMS');
+
+  const campoDataIni = page.getByLabel('Data inicial');
+  await destacar(campoDataIni); await campoDataIni.fill(dados.data_ini);
+
+  const campoHoraIni = page.getByLabel('Hora inicial');
+  await destacar(campoHoraIni); await campoHoraIni.fill(dados.hora_ini);
+
+  const campoDataFim = page.getByLabel('Data final');
+  await destacar(campoDataFim); await campoDataFim.fill(dados.data_fim);
+
+  const campoHoraFim = page.getByLabel('Hora final');
+  await destacar(campoHoraFim); await campoHoraFim.fill(dados.hora_fim);
 
   if (comReposicao) {
     // FASE 1 ainda não cobre o fluxo COM reposição — implementar quando validado
@@ -484,10 +507,14 @@ async function executarFechamento(page, sol, comReposicao) {
   }
 
   // Fase 1: fechamento SEM reposição — marca "Reagendar atendimento conflitante" (confirmado com a Juliana)
-  await page.getByText('Reagendar atendimento conflitante').click();
+  const opcaoReagendar = page.getByText('Reagendar atendimento conflitante');
+  await destacar(opcaoReagendar);
+  await opcaoReagendar.click();
 
   await page.waitForTimeout(500);
-  await page.locator('button:has-text("Programar")').click();
+  const botaoProgramar = page.locator('button:has-text("Programar")');
+  await destacar(botaoProgramar);
+  await botaoProgramar.click();
   await page.waitForTimeout(1000);
 
   // Modal de confirmação: "Programar ausência?" → "Sim, programar"
