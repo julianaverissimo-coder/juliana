@@ -1,6 +1,7 @@
 const { chromium } = require('playwright');
-const fs   = require('fs');
-const path = require('path');
+const fs      = require('fs');
+const path    = require('path');
+const readline = require('readline');
 
 // ═══════════════════════════════════════════════════════════════════
 //  CONFIGURAÇÕES
@@ -136,6 +137,13 @@ async function garantirNavegador() {
 // ═══════════════════════════════════════════════════════════════════
 //  PLANILHA — abre e mantém a aba do Google Sheets
 // ═══════════════════════════════════════════════════════════════════
+function aguardarEnter(mensagem) {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(mensagem, () => { rl.close(); resolve(); });
+  });
+}
+
 async function abrirPlanilha() {
   await garantirNavegador();
   if (_planilhaPage && !_planilhaPage.isClosed()) {
@@ -145,7 +153,19 @@ async function abrirPlanilha() {
   _planilhaPage = await _ctx.newPage();
   inf('Abrindo planilha no Chrome...');
   await _planilhaPage.goto(PLANILHA_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await _planilhaPage.waitForTimeout(4000);
+  await _planilhaPage.waitForTimeout(3000);
+
+  // Detecta se caiu na tela de login do Google — pausa e espera confirmação manual
+  const precisaLogin = _planilhaPage.url().includes('accounts.google.com') ||
+    await _planilhaPage.locator('input[type="email"]').first().isVisible().catch(() => false);
+
+  if (precisaLogin) {
+    aviso('Login do Google necessário — faça login na janela do Chrome que abriu.');
+    await aguardarEnter('>>> Depois de logar no Google (e confirmar a verificação em 2 etapas se pedir), pressione ENTER aqui para continuar... ');
+    await _planilhaPage.goto(PLANILHA_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await _planilhaPage.waitForTimeout(3000);
+  }
+
   ok('Planilha aberta');
   return _planilhaPage;
 }
@@ -610,7 +630,7 @@ async function ciclo() {
     else aviso(`Linha ${sol.rowIndex + 1} não processada — registrado na planilha.`);
     await new Promise(r => setTimeout(r, 3000));
   }
-  inf('Próxima verificação em 30 minutos.');
+  inf(`Próxima verificação em ${INTERVALO_MS / 60000} minutos.`);
 }
 
 // ═══════════════════════════════════════════════════════════════════
