@@ -392,9 +392,14 @@ async function abrirBackoffice() {
     await page.locator('button[type="submit"], button:has-text("Entrar")').first().click();
     await page.waitForTimeout(3000);
     ok('Login realizado');
-    await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(2000);
   }
+
+  // Garante que está na tela de consulta de profissionais, com o campo de busca visível
+  await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForLoadState('networkidle').catch(() => {});
+
+  const campoBusca = page.getByPlaceholder('Digite o nome do profissional, e-mail ou CPF');
+  await campoBusca.waitFor({ state: 'visible', timeout: 20000 });
 
   ok('Tela de Profissionais aberta');
   return page;
