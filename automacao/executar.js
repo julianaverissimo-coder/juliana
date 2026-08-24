@@ -18,7 +18,7 @@ const BACKOFFICE_URL   = 'https://backoffice.conexasaude.com.br/profissional/con
 const PROFILE_DIR      = path.join(__dirname, 'chrome_profile');
 const PROCESSADOS_FILE = path.join(__dirname, 'processados.json');
 const LOG_FILE         = path.join(__dirname, 'log.txt');
-const INTERVALO_MS     = 30 * 60 * 1000;
+const INTERVALO_MS     = 15 * 60 * 1000;
 
 // ═══════════════════════════════════════════════════════════════════
 //  COLUNAS DA ABA PAINEL (índice 0 = coluna A)
