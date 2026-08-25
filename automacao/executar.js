@@ -142,6 +142,63 @@ async function destacar(locator) {
   try { await locator.highlight(); } catch {}
 }
 
+// ═══════════════════════════════════════════════════════════════════
+//  CURSOR VISUAL — desenha uma setinha na tela e move ela de verdade
+//  até cada campo/botão, para dar a sensação de alguém usando o mouse
+// ═══════════════════════════════════════════════════════════════════
+const _cursorPos = new WeakMap();
+
+async function injetarCursor(page) {
+  await page.addInitScript(() => {
+    function criar() {
+      if (document.getElementById('agente-cursor-ia')) return;
+      const el = document.createElement('div');
+      el.id = 'agente-cursor-ia';
+      el.style.position = 'fixed';
+      el.style.left = '0px';
+      el.style.top = '0px';
+      el.style.zIndex = '2147483647';
+      el.style.pointerEvents = 'none';
+      el.style.transform = 'translate(-2px, -2px)';
+      el.style.transition = 'left 0.05s linear, top 0.05s linear';
+      el.innerHTML = '<svg width="30" height="30" viewBox="0 0 30 30" style="filter:drop-shadow(1px 2px 3px rgba(0,0,0,.6))"><path d="M3 2 L3 24 L9.5 18.5 L13 27 L17 25.3 L13.5 17 L23 17 Z" fill="#FF2D6B" stroke="white" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+      document.body.appendChild(el);
+    }
+    window.__moverCursorAgente = (x, y) => {
+      criar();
+      const el = document.getElementById('agente-cursor-ia');
+      if (el) { el.style.left = x + 'px'; el.style.top = y + 'px'; }
+    };
+    if (document.readyState !== 'loading') criar();
+    else document.addEventListener('DOMContentLoaded', criar);
+  });
+  await page.evaluate(() => {
+    if (window.__moverCursorAgente) window.__moverCursorAgente(20, 20);
+  }).catch(() => {});
+}
+
+// Move o cursor visual (e o mouse real) suavemente até o elemento, depois destaca e retorna o locator
+async function apontarPara(page, locator) {
+  const box = await locator.boundingBox().catch(() => null);
+  if (!box) { await destacar(locator); return locator; }
+
+  const alvoX = box.x + box.width / 2;
+  const alvoY = box.y + box.height / 2;
+  const origem = _cursorPos.get(page) || { x: alvoX, y: alvoY };
+  const passos = 14;
+
+  for (let i = 1; i <= passos; i++) {
+    const x = origem.x + (alvoX - origem.x) * (i / passos);
+    const y = origem.y + (alvoY - origem.y) * (i / passos);
+    await page.mouse.move(x, y).catch(() => {});
+    await page.evaluate(([x, y]) => window.__moverCursorAgente && window.__moverCursorAgente(x, y), [x, y]).catch(() => {});
+    await page.waitForTimeout(25);
+  }
+  _cursorPos.set(page, { x: alvoX, y: alvoY });
+  await destacar(locator);
+  return locator;
+}
+
 function aguardarEnter(mensagem) {
   return new Promise((resolve) => {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -156,6 +213,7 @@ async function abrirPlanilha() {
     if (url.includes('docs.google.com/spreadsheets')) return _planilhaPage;
   }
   _planilhaPage = await _ctx.newPage();
+  await injetarCursor(_planilhaPage);
   inf('Abrindo planilha no Chrome...');
   await _planilhaPage.goto(PLANILHA_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await _planilhaPage.waitForTimeout(3000);
@@ -381,6 +439,7 @@ async function registrarFalha(rowNum, sol, categoriaAgente, detalhe = '') {
 // ═══════════════════════════════════════════════════════════════════
 async function abrirBackoffice() {
   const page = await _ctx.newPage();
+  await injetarCursor(page);
   inf('Abrindo Backoffice...');
   await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.waitForTimeout(2000);
@@ -426,14 +485,14 @@ async function buscarProfissional(page, email) {
 
   const campo = page.getByPlaceholder('Digite o nome do profissional, e-mail ou CPF');
   await campo.waitFor({ state: 'visible', timeout: 10000 });
-  await destacar(campo);
+  await apontarPara(page, campo);
   await campo.clear();
   await campo.fill(email);
   await page.waitForTimeout(300);
 
   // Botão de busca (lupa roxa) — fica logo ao lado do campo, não usar Enter
   const botaoBusca = campo.locator('xpath=following::button[1]');
-  await destacar(botaoBusca);
+  await apontarPara(page, botaoBusca);
   await botaoBusca.click({ timeout: 5000 }).catch(async () => {
     await page.keyboard.press('Enter'); // fallback caso o botão não seja localizado
   });
@@ -470,36 +529,36 @@ async function executarFechamento(page, sol, comReposicao) {
   inf('Abrindo menu ⋮...');
   const linhaAtiva = page.locator('tr').filter({ hasText: 'Ativo' }).last();
   const botaoMenu  = linhaAtiva.locator('button').last();
-  await destacar(botaoMenu);
+  await apontarPara(page, botaoMenu);
   await botaoMenu.click();
   await page.waitForTimeout(800);
 
   const itemAgenda = page.locator('[role="menuitem"]:has-text("Agenda"), li:has-text("Agenda"), a:has-text("Agenda")').last();
-  await destacar(itemAgenda);
+  await apontarPara(page, itemAgenda);
   await itemAgenda.click();
   await page.waitForTimeout(2000);
 
   const abaAusencias = page.locator('text=Ausências');
-  await destacar(abaAusencias);
+  await apontarPara(page, abaAusencias);
   await abaAusencias.click();
   await page.waitForTimeout(1500);
 
   // Campos confirmados na tela real de "Programação de ausência"
   inf(`Preenchendo: FORMS | ${dados.data_ini} ${dados.hora_ini} até ${dados.data_fim} ${dados.hora_fim}`);
   const campoNome = page.getByLabel('Nome do evento');
-  await destacar(campoNome); await campoNome.fill('FORMS');
+  await apontarPara(page, campoNome); await campoNome.fill('FORMS');
 
   const campoDataIni = page.getByLabel('Data inicial');
-  await destacar(campoDataIni); await campoDataIni.fill(dados.data_ini);
+  await apontarPara(page, campoDataIni); await campoDataIni.fill(dados.data_ini);
 
   const campoHoraIni = page.getByLabel('Hora inicial');
-  await destacar(campoHoraIni); await campoHoraIni.fill(dados.hora_ini);
+  await apontarPara(page, campoHoraIni); await campoHoraIni.fill(dados.hora_ini);
 
   const campoDataFim = page.getByLabel('Data final');
-  await destacar(campoDataFim); await campoDataFim.fill(dados.data_fim);
+  await apontarPara(page, campoDataFim); await campoDataFim.fill(dados.data_fim);
 
   const campoHoraFim = page.getByLabel('Hora final');
-  await destacar(campoHoraFim); await campoHoraFim.fill(dados.hora_fim);
+  await apontarPara(page, campoHoraFim); await campoHoraFim.fill(dados.hora_fim);
 
   if (comReposicao) {
     // FASE 1 ainda não cobre o fluxo COM reposição — implementar quando validado
@@ -508,12 +567,12 @@ async function executarFechamento(page, sol, comReposicao) {
 
   // Fase 1: fechamento SEM reposição — marca "Reagendar atendimento conflitante" (confirmado com a Juliana)
   const opcaoReagendar = page.getByText('Reagendar atendimento conflitante');
-  await destacar(opcaoReagendar);
+  await apontarPara(page, opcaoReagendar);
   await opcaoReagendar.click();
 
   await page.waitForTimeout(500);
   const botaoProgramar = page.locator('button:has-text("Programar")');
-  await destacar(botaoProgramar);
+  await apontarPara(page, botaoProgramar);
   await botaoProgramar.click();
   await page.waitForTimeout(1000);
 
