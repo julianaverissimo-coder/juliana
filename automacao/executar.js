@@ -348,18 +348,25 @@ async function lerPendentes() {
 // ═══════════════════════════════════════════════════════════════════
 //  ESCREVE NA PLANILHA — navega até a célula e digita o valor
 // ═══════════════════════════════════════════════════════════════════
+// Retorna a referência de célula que a Caixa de Nome está mostrando agora (ex: "N3618")
+async function celulaAtual(planilha) {
+  const seletores = ['.docs-name-box input', '#t-name-box', '.docs-name-box'];
+  for (const sel of seletores) {
+    const valor = await planilha.locator(sel).first().inputValue().catch(() => null);
+    if (valor) return valor.trim().toUpperCase();
+  }
+  return null;
+}
+
+// Navega até a célula e CONFIRMA que chegou lá antes de deixar escrever — nunca escreve "no escuro"
 async function navegarParaCelula(planilha, letra, row) {
+  const alvo = `${letra}${row}`.toUpperCase();
+
   await planilha.bringToFront();
   await planilha.keyboard.press('Escape');
   await planilha.waitForTimeout(300);
 
-  // Tenta clicar na Caixa de Nome (Name Box) — top-left da planilha
-  const seletores = [
-    '.docs-name-box input',
-    '.docs-name-box',
-    '[aria-label="Name Box"]',
-    '.cell-input',
-  ];
+  const seletores = ['.docs-name-box input', '#t-name-box', '.docs-name-box', '[aria-label="Name Box"]'];
   let clicou = false;
   for (const sel of seletores) {
     clicou = await planilha.locator(sel).first().click({ timeout: 2000 })
@@ -367,21 +374,25 @@ async function navegarParaCelula(planilha, letra, row) {
     if (clicou) break;
   }
   if (!clicou) {
-    // Fallback: Ctrl+Home depois navegar com atalho
-    await planilha.keyboard.press('Control+Home');
-    await planilha.waitForTimeout(300);
+    throw new Error(`Não foi possível localizar a Caixa de Nome da planilha (destino: ${alvo})`);
   }
 
   await planilha.waitForTimeout(200);
   await planilha.keyboard.press('Control+a');
-  await planilha.keyboard.type(`${letra}${row}`);
+  await planilha.keyboard.type(alvo);
   await planilha.keyboard.press('Enter');
-  await planilha.waitForTimeout(500);
+  await planilha.waitForTimeout(600);
+
+  // Confirmação real: a Caixa de Nome precisa mostrar exatamente a célula pedida
+  const atual = await celulaAtual(planilha);
+  if (atual !== alvo) {
+    throw new Error(`Navegação para célula falhou — pedido ${alvo}, caixa de nome mostra "${atual}". Abortando escrita para não gravar em lugar errado.`);
+  }
 }
 
 async function escreverNaCelula(letra, row, valor) {
   const planilha = await abrirPlanilha();
-  await navegarParaCelula(planilha, letra, row);
+  await navegarParaCelula(planilha, letra, row); // lança erro se não confirmar a célula certa
   await planilha.keyboard.type(String(valor));
   await planilha.keyboard.press('Tab');
   await planilha.waitForTimeout(300);
