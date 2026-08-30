@@ -50,19 +50,28 @@ const STATUS = {
   REPROVADO: 'Reprovado',
 };
 
+// Coluna S (AGENTE DE IA) só tem 2 opções reais na lista suspensa
 const AGENTE = {
-  REALIZADO:              'REALIZADO',
-  DOIS_PERFIS_ATIVOS:     'NÃO REALIZADO - 2 perfis ativos',
-  MEDICO_NAO_ENCONTRADO:  'NÃO REALIZADO - Médico não encontrado',
-  PERFIL_INATIVO:         'NÃO REALIZADO - Perfil inativo',
-  ERRO_TECNICO:           'NÃO REALIZADO - Erro técnico',
-  TELA_INESPERADA:        'NÃO REALIZADO - Tela inesperada',
-  NAO_AUTORIZADO_GESTAO:  'NÃO REALIZADO - Não autorizado pela gestão medica.',
-  AGENDA_QUINZENAL:       'NÃO REALIZADO - Não realizamos agenda quinzenal',
-  JA_REALIZADA_ANTES:     'NÃO REALIZADO - Ação já realizada antes',
-  SEM_INFORMACOES:        'NÃO REALIZADO - Sem informações necessarias',
-  FORA_DO_PRAZO:          'NÃO REALIZADO - Fora do prazo',
+  REALIZADO: 'REALIZADO',
+  ERRO:      'ERRO',
 };
+
+// Motivo detalhado vai na coluna T (observação, texto livre) — não é lista suspensa
+const MOTIVO = {
+  DOIS_PERFIS_ATIVOS:     '2 perfis ativos encontrados',
+  MEDICO_NAO_ENCONTRADO:  'Médico não encontrado',
+  PERFIL_INATIVO:         'Perfil inativo',
+  ERRO_TECNICO:           'Erro técnico',
+  TELA_INESPERADA:        'Tela inesperada',
+  NAO_AUTORIZADO_GESTAO:  'Não autorizado pela gestão médica',
+  AGENDA_QUINZENAL:       'Não realizamos agenda quinzenal',
+  JA_REALIZADA_ANTES:     'Ação já realizada antes',
+  SEM_INFORMACOES:        'Sem informações necessárias',
+  FORA_DO_PRAZO:          'Fora do prazo',
+};
+
+// Colunas que são LISTA SUSPENSA — precisam ser marcadas (clicadas), nunca digitadas
+const COLUNAS_LISTA = new Set([COL.STATUS, COL.ANALISTA, COL.AGENTE]);
 
 // ═══════════════════════════════════════════════════════════════════
 //  LOG
@@ -129,6 +138,7 @@ async function garantirNavegador() {
     headless: false,
     channel: 'chrome',
     slowMo: 900,
+    permissions: ['clipboard-read', 'clipboard-write'],
     args: ['--no-sandbox', '--start-maximized'],
   });
   ok('Chrome pronto');
@@ -394,6 +404,7 @@ async function navegarParaCelula(planilha, letra, row) {
   ok(`  ✓ na célula ${alvo}`);
 }
 
+// Só para colunas de TEXTO LIVRE (ex: coluna T - observação). Nunca usar em coluna com lista suspensa.
 async function escreverNaCelula(letra, row, valor) {
   const planilha = await abrirPlanilha();
   await navegarParaCelula(planilha, letra, row); // lança erro se não confirmar a célula certa
@@ -405,6 +416,44 @@ async function escreverNaCelula(letra, row, valor) {
   ok(`  ✎ ${letra}${row} = "${valor}"`);
 }
 
+// Lê o conteúdo atual da célula selecionada via copiar/colar (não depende de aparência visual)
+async function lerCelulaAtual(planilha) {
+  await planilha.keyboard.press('Control+c');
+  await planilha.waitForTimeout(200);
+  return await planilha.evaluate(() => navigator.clipboard.readText()).catch(() => null);
+}
+
+// Para colunas com LISTA SUSPENSA (Status, Analista, Agente de IA): abre a lista e CLICA na opção.
+// Nunca digita. Se a opção não aparecer, lança erro em vez de inventar/forçar algo.
+async function selecionarNaLista(letra, row, opcaoTexto) {
+  const planilha = await abrirPlanilha();
+  await navegarParaCelula(planilha, letra, row); // já confirma que está na célula certa
+
+  inf(`  ▾ abrindo lista suspensa em ${letra}${row}...`);
+  await planilha.keyboard.press('Enter');
+  await planilha.waitForTimeout(600);
+
+  const opcao = planilha.getByText(opcaoTexto, { exact: true }).last();
+  const apareceu = await opcao.isVisible({ timeout: 3000 }).catch(() => false);
+
+  if (!apareceu) {
+    await planilha.keyboard.press('Escape');
+    throw new Error(`Opção "${opcaoTexto}" não apareceu na lista suspensa de ${letra}${row} — não vou inventar, abortando.`);
+  }
+
+  await apontarPara(planilha, opcao);
+  await opcao.click();
+  await planilha.waitForTimeout(500);
+
+  // Verifica de verdade o que ficou gravado na célula (não confia só no clique)
+  const gravado = (await lerCelulaAtual(planilha) || '').trim();
+  if (gravado !== opcaoTexto) {
+    throw new Error(`Depois de marcar "${opcaoTexto}" em ${letra}${row}, a célula ficou com "${gravado}" — não confere. Abortando.`);
+  }
+
+  ok(`  ✓ ${letra}${row} marcado como "${opcaoTexto}"`);
+}
+
 function colLetra(idx) {
   return String.fromCharCode(65 + parseInt(idx));
 }
@@ -412,7 +461,12 @@ function colLetra(idx) {
 async function atualizarPlanilha(rowNum, colunas) {
   try {
     for (const [colIdx, valor] of Object.entries(colunas)) {
-      await escreverNaCelula(colLetra(colIdx), rowNum, valor);
+      const idx = parseInt(colIdx);
+      if (COLUNAS_LISTA.has(idx)) {
+        await selecionarNaLista(colLetra(idx), rowNum, valor);
+      } else {
+        await escreverNaCelula(colLetra(idx), rowNum, valor);
+      }
     }
     // Salva com Ctrl+S
     const planilha = await abrirPlanilha();
@@ -437,16 +491,16 @@ async function registrarSucesso(rowNum, sol) {
   });
 }
 
-// categoriaAgente deve ser um dos valores exatos de AGENTE (lista suspensa da coluna S)
-async function registrarFalha(rowNum, sol, categoriaAgente, detalhe = '') {
+// motivo deve ser um dos valores de MOTIVO (vai como texto livre na coluna T)
+async function registrarFalha(rowNum, sol, motivo, detalhe = '') {
   inf('Registrando falha na planilha...');
-  const detalheCurto = String(detalhe || categoriaAgente).substring(0, 120);
+  const detalheCurto = String(detalhe ? `${motivo} — ${detalhe}` : motivo).substring(0, 200);
   await atualizarPlanilha(rowNum, {
     [COL.STATUS]:     STATUS.REPROVADO,
     [COL.ANALISTA]:   'AGENTE DE IA',
     [COL.DATA_EXEC]:  agoraData(),
     [COL.HORA_EXEC]:  agoraHorario(),
-    [COL.AGENTE]:     categoriaAgente,
+    [COL.AGENTE]:     AGENTE.ERRO,
     [COL.OBSERVACAO]: detalheCurto,
   });
 }
@@ -661,18 +715,16 @@ async function processarSolicitacao(sol) {
   inf(`Linha : ${sol.rowIndex + 1}`);
   sep();
 
-  // Sinaliza na planilha que esta linha está sendo processada
+  // Sinaliza na planilha que esta linha está sendo processada (marca "Em andamento" na lista)
   try {
-    const planilha = await abrirPlanilha();
-    await navegarParaCelula(planilha, colLetra(COL.STATUS), sol.rowIndex + 1);
-    await planilha.keyboard.type('⏳');
-    await planilha.keyboard.press('Escape');
-    await planilha.waitForTimeout(300);
-  } catch {}
+    await selecionarNaLista(colLetra(COL.STATUS), sol.rowIndex + 1, 'Em andamento');
+  } catch (e) {
+    aviso(`Não consegui marcar "Em andamento" na linha ${sol.rowIndex + 1}: ${e.message}`);
+  }
 
   // Já tentado antes (ex: crash na execução anterior deixou o Status em branco de novo)
   if (sol.jaProcessadoAntes) {
-    await registrarFalha(sol.rowIndex + 1, sol, AGENTE.JA_REALIZADA_ANTES, 'Solicitação já havia sido processada anteriormente.');
+    await registrarFalha(sol.rowIndex + 1, sol, MOTIVO.JA_REALIZADA_ANTES, 'Solicitação já havia sido processada anteriormente.');
     return false;
   }
 
@@ -683,17 +735,17 @@ async function processarSolicitacao(sol) {
 
     if (resultado === 'nao_encontrado') {
       await page.close();
-      await registrarFalha(sol.rowIndex + 1, sol, AGENTE.MEDICO_NAO_ENCONTRADO, `E-mail: ${sol.email}`);
+      await registrarFalha(sol.rowIndex + 1, sol, MOTIVO.MEDICO_NAO_ENCONTRADO, `E-mail: ${sol.email}`);
       return false;
     }
     if (resultado === 'perfil_inativo') {
       await page.close();
-      await registrarFalha(sol.rowIndex + 1, sol, AGENTE.PERFIL_INATIVO, `E-mail: ${sol.email}`);
+      await registrarFalha(sol.rowIndex + 1, sol, MOTIVO.PERFIL_INATIVO, `E-mail: ${sol.email}`);
       return false;
     }
     if (resultado === 'sem_informacoes') {
       await page.close();
-      await registrarFalha(sol.rowIndex + 1, sol, AGENTE.SEM_INFORMACOES, 'Múltiplos perfis, e-mail inválido, ou caso ambíguo.');
+      await registrarFalha(sol.rowIndex + 1, sol, MOTIVO.SEM_INFORMACOES, 'Múltiplos perfis, e-mail inválido, ou caso ambíguo.');
       return false;
     }
 
@@ -705,7 +757,7 @@ async function processarSolicitacao(sol) {
       await executarFechamento(page, sol, false);
     } else {
       await page.close();
-      await registrarFalha(sol.rowIndex + 1, sol, AGENTE.TELA_INESPERADA, `Tipo fora do escopo da Fase 1: ${sol.tipo}`);
+      await registrarFalha(sol.rowIndex + 1, sol, MOTIVO.TELA_INESPERADA, `Tipo fora do escopo da Fase 1: ${sol.tipo}`);
       return false;
     }
 
@@ -718,7 +770,7 @@ async function processarSolicitacao(sol) {
   } catch(e) {
     err(`Erro: ${e.message}`);
     if (page) await page.close().catch(() => {});
-    await registrarFalha(sol.rowIndex + 1, sol, AGENTE.ERRO_TECNICO, e.message);
+    await registrarFalha(sol.rowIndex + 1, sol, MOTIVO.ERRO_TECNICO, e.message);
     return false;
   }
 }
