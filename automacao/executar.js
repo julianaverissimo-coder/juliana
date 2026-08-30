@@ -367,36 +367,42 @@ async function navegarParaCelula(planilha, letra, row) {
   await planilha.waitForTimeout(300);
 
   const seletores = ['.docs-name-box input', '#t-name-box', '.docs-name-box', '[aria-label="Name Box"]'];
-  let clicou = false;
+  let caixaNome = null;
   for (const sel of seletores) {
-    clicou = await planilha.locator(sel).first().click({ timeout: 2000 })
-      .then(() => true).catch(() => false);
-    if (clicou) break;
+    const loc = planilha.locator(sel).first();
+    if (await loc.isVisible().catch(() => false)) { caixaNome = loc; break; }
   }
-  if (!clicou) {
+  if (!caixaNome) {
     throw new Error(`Não foi possível localizar a Caixa de Nome da planilha (destino: ${alvo})`);
   }
 
+  inf(`  → navegando para a célula ${alvo}...`);
+  await apontarPara(planilha, caixaNome);
+  await caixaNome.click().catch(() => {});
+
   await planilha.waitForTimeout(200);
   await planilha.keyboard.press('Control+a');
-  await planilha.keyboard.type(alvo);
+  await planilha.keyboard.type(alvo, { delay: 60 });
   await planilha.keyboard.press('Enter');
-  await planilha.waitForTimeout(600);
+  await planilha.waitForTimeout(800);
 
   // Confirmação real: a Caixa de Nome precisa mostrar exatamente a célula pedida
   const atual = await celulaAtual(planilha);
   if (atual !== alvo) {
     throw new Error(`Navegação para célula falhou — pedido ${alvo}, caixa de nome mostra "${atual}". Abortando escrita para não gravar em lugar errado.`);
   }
+  ok(`  ✓ na célula ${alvo}`);
 }
 
 async function escreverNaCelula(letra, row, valor) {
   const planilha = await abrirPlanilha();
   await navegarParaCelula(planilha, letra, row); // lança erro se não confirmar a célula certa
-  await planilha.keyboard.type(String(valor));
+  inf(`  ✎ digitando "${valor}" em ${letra}${row}...`);
+  await planilha.keyboard.type(String(valor), { delay: 60 });
+  await planilha.waitForTimeout(400);
   await planilha.keyboard.press('Tab');
-  await planilha.waitForTimeout(300);
-  inf(`  ✎ ${letra}${row} = "${valor}"`);
+  await planilha.waitForTimeout(500);
+  ok(`  ✎ ${letra}${row} = "${valor}"`);
 }
 
 function colLetra(idx) {
