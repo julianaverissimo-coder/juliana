@@ -341,18 +341,27 @@ async function lerPendentes() {
   inf('Verificando planilha (aba PAINEL)...');
   const planilha = await abrirPlanilha();
 
-  try {
-    const csv = await planilha.evaluate(async (url) => {
-      const r = await fetch(url, { credentials: 'include' });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.text();
-    }, PLANILHA_CSV);
+  for (let tentativa = 1; tentativa <= 2; tentativa++) {
+    try {
+      const csv = await planilha.evaluate(async (url) => {
+        const r = await fetch(url, { credentials: 'include' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.text();
+      }, PLANILHA_CSV);
 
-    return _processarCSV(csv);
-  } catch(e) {
-    err('Erro ao ler planilha: ' + e.message);
-    return [];
+      return _processarCSV(csv);
+    } catch(e) {
+      if (tentativa < 2) {
+        aviso(`Falha temporária ao ler planilha (tentativa ${tentativa}): ${e.message} — tentando de novo...`);
+        await planilha.reload({ waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+        await planilha.waitForTimeout(3000);
+      } else {
+        err('Erro ao ler planilha: ' + e.message);
+        return [];
+      }
+    }
   }
+  return [];
 }
 
 // ═══════════════════════════════════════════════════════════════════
