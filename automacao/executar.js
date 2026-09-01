@@ -549,7 +549,7 @@ async function abrirBackoffice() {
   await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.waitForLoadState('networkidle').catch(() => {});
 
-  const campoBusca = page.getByPlaceholder('Digite o nome do profissional, e-mail ou CPF');
+  const campoBusca = page.getByRole('textbox').first();
   let apareceu = await campoBusca.waitFor({ state: 'visible', timeout: 20000 }).then(() => true).catch(() => false);
 
   if (!apareceu) {
@@ -577,7 +577,7 @@ async function buscarProfissional(page, email) {
   await page.waitForLoadState('networkidle').catch(() => {});
   await page.waitForTimeout(1500);
 
-  const campo = page.getByPlaceholder('Digite o nome do profissional, e-mail ou CPF');
+  const campo = page.getByRole('textbox').first();
   await campo.waitFor({ state: 'visible', timeout: 10000 });
   await apontarPara(page, campo);
   await campo.clear();
