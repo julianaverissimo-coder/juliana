@@ -546,21 +546,26 @@ async function abrirBackoffice() {
   }
 
   // Garante que está na tela de consulta de profissionais, com o campo de busca visível
-  const campoBusca = page.getByRole('textbox').first();
+  // (o conteúdo real fica dentro de um iframe — precisa aguardar ele existir e carregar)
   let apareceu = false;
+  let campoBusca = null;
 
   for (let tentativa = 1; tentativa <= 3 && !apareceu; tentativa++) {
     await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(1500); // dá tempo do iframe ser criado
+
+    const frameConteudo = obterFrameConteudo(page);
+    campoBusca = frameConteudo.getByRole('textbox').first();
     apareceu = await campoBusca.waitFor({ state: 'visible', timeout: 60000 }).then(() => true).catch(() => false);
 
     if (!apareceu) {
-      // Diagnóstico real: o que existe de fato na página nesse momento?
+      // Diagnóstico real: o que existe de fato na página/iframe nesse momento?
       const urlAtual     = page.url();
-      const totalInputs  = await page.locator('input').count().catch(() => -1);
+      const totalInputs  = await frameConteudo.locator('input').count().catch(() => -1);
       const totalIframes = page.frames().length - 1; // -1 porque a página principal também conta como "frame"
-      const temTextoBusca = await page.getByText('profissional', { exact: false }).count().catch(() => -1);
-      aviso(`Campo de busca não apareceu (tentativa ${tentativa}/3). URL: ${urlAtual} | inputs na página: ${totalInputs} | iframes: ${totalIframes} | ocorrências do texto "profissional": ${temTextoBusca}`);
+      const temTextoBusca = await frameConteudo.getByText('profissional', { exact: false }).count().catch(() => -1);
+      aviso(`Campo de busca não apareceu (tentativa ${tentativa}/3). URL: ${urlAtual} | inputs no frame: ${totalInputs} | iframes: ${totalIframes} | ocorrências do texto "profissional": ${temTextoBusca}`);
     }
   }
 
@@ -571,13 +576,20 @@ async function abrirBackoffice() {
   }
 
   ok('Tela de Profissionais aberta');
-  return page;
+  return { page, frame: obterFrameConteudo(page) };
+}
+
+// O conteúdo real do Backoffice fica dentro de um iframe — os elementos (campos, botões, tabela)
+// precisam ser buscados aqui, nunca na página principal (que fica vazia).
+function obterFrameConteudo(page) {
+  const filho = page.frames().find(f => f !== page.mainFrame());
+  return filho || page; // se não tiver iframe (outra tela), usa a própria página
 }
 
 // ═══════════════════════════════════════════════════════════════════
 //  BUSCA PROFISSIONAL POR E-MAIL
 // ═══════════════════════════════════════════════════════════════════
-async function buscarProfissional(page, email) {
+async function buscarProfissional(page, frame, email) {
   inf(`Buscando: ${email}`);
 
   if (!emailValido(email)) {
@@ -588,7 +600,7 @@ async function buscarProfissional(page, email) {
   await page.waitForLoadState('networkidle').catch(() => {});
   await page.waitForTimeout(1500);
 
-  const campo = page.getByRole('textbox').first();
+  const campo = frame.getByRole('textbox').first();
   await campo.waitFor({ state: 'visible', timeout: 10000 });
   await apontarPara(page, campo);
   await campo.clear();
@@ -604,7 +616,7 @@ async function buscarProfissional(page, email) {
   await page.waitForTimeout(2500);
 
   // Conta quantas linhas de resultado existem na tabela
-  const linhas = page.locator('table tbody tr, [role="row"]').filter({ hasNotText: 'ID Profissional' });
+  const linhas = frame.locator('table tbody tr, [role="row"]').filter({ hasNotText: 'ID Profissional' });
   const totalLinhas = await linhas.count();
 
   if (totalLinhas === 0) {
@@ -627,42 +639,42 @@ async function buscarProfissional(page, email) {
 // ═══════════════════════════════════════════════════════════════════
 //  FLUXO A — FECHAMENTO (com e sem reposição)
 // ═══════════════════════════════════════════════════════════════════
-async function executarFechamento(page, sol, comReposicao) {
+async function executarFechamento(page, frame, sol, comReposicao) {
   const dados = parsearDescricao(sol.desc);
   if (!dados) throw new Error(`Não foi possível extrair datas: "${sol.desc}"`);
 
   inf('Abrindo menu ⋮...');
-  const linhaAtiva = page.locator('tr').filter({ hasText: 'Ativo' }).last();
+  const linhaAtiva = frame.locator('tr').filter({ hasText: 'Ativo' }).last();
   const botaoMenu  = linhaAtiva.locator('button').last();
   await apontarPara(page, botaoMenu);
   await botaoMenu.click();
   await page.waitForTimeout(800);
 
-  const itemAgenda = page.locator('[role="menuitem"]:has-text("Agenda"), li:has-text("Agenda"), a:has-text("Agenda")').last();
+  const itemAgenda = frame.locator('[role="menuitem"]:has-text("Agenda"), li:has-text("Agenda"), a:has-text("Agenda")').last();
   await apontarPara(page, itemAgenda);
   await itemAgenda.click();
   await page.waitForTimeout(2000);
 
-  const abaAusencias = page.locator('text=Ausências');
+  const abaAusencias = frame.locator('text=Ausências');
   await apontarPara(page, abaAusencias);
   await abaAusencias.click();
   await page.waitForTimeout(1500);
 
   // Campos confirmados na tela real de "Programação de ausência"
   inf(`Preenchendo: FORMS | ${dados.data_ini} ${dados.hora_ini} até ${dados.data_fim} ${dados.hora_fim}`);
-  const campoNome = page.getByLabel('Nome do evento');
+  const campoNome = frame.getByLabel('Nome do evento');
   await apontarPara(page, campoNome); await campoNome.fill('FORMS');
 
-  const campoDataIni = page.getByLabel('Data inicial');
+  const campoDataIni = frame.getByLabel('Data inicial');
   await apontarPara(page, campoDataIni); await campoDataIni.fill(dados.data_ini);
 
-  const campoHoraIni = page.getByLabel('Hora inicial');
+  const campoHoraIni = frame.getByLabel('Hora inicial');
   await apontarPara(page, campoHoraIni); await campoHoraIni.fill(dados.hora_ini);
 
-  const campoDataFim = page.getByLabel('Data final');
+  const campoDataFim = frame.getByLabel('Data final');
   await apontarPara(page, campoDataFim); await campoDataFim.fill(dados.data_fim);
 
-  const campoHoraFim = page.getByLabel('Hora final');
+  const campoHoraFim = frame.getByLabel('Hora final');
   await apontarPara(page, campoHoraFim); await campoHoraFim.fill(dados.hora_fim);
 
   if (comReposicao) {
@@ -671,18 +683,18 @@ async function executarFechamento(page, sol, comReposicao) {
   }
 
   // Fase 1: fechamento SEM reposição — marca "Reagendar atendimento conflitante" (confirmado com a Juliana)
-  const opcaoReagendar = page.getByText('Reagendar atendimento conflitante');
+  const opcaoReagendar = frame.getByText('Reagendar atendimento conflitante');
   await apontarPara(page, opcaoReagendar);
   await opcaoReagendar.click();
 
   await page.waitForTimeout(500);
-  const botaoProgramar = page.locator('button:has-text("Programar")');
+  const botaoProgramar = frame.locator('button:has-text("Programar")');
   await apontarPara(page, botaoProgramar);
   await botaoProgramar.click();
   await page.waitForTimeout(1000);
 
   // Modal de confirmação: "Programar ausência?" → "Sim, programar"
-  const modalConfirmar = page.getByRole('button', { name: 'Sim, programar' });
+  const modalConfirmar = frame.getByRole('button', { name: 'Sim, programar' });
   const apareceuModal  = await modalConfirmar.isVisible({ timeout: 5000 }).catch(() => false);
   if (!apareceuModal) {
     throw new Error('Modal de confirmação "Programar ausência?" não apareceu — tela inesperada');
@@ -757,8 +769,9 @@ async function processarSolicitacao(sol) {
 
   let page;
   try {
-    page = await abrirBackoffice();
-    const resultado = await buscarProfissional(page, sol.email);
+    let frame;
+    ({ page, frame } = await abrirBackoffice());
+    const resultado = await buscarProfissional(page, frame, sol.email);
 
     if (resultado === 'nao_encontrado') {
       await page.close();
@@ -781,7 +794,7 @@ async function processarSolicitacao(sol) {
 
     // FASE 1: apenas fechamento sem reposição
     if (tipo.includes('fechamento') && tipo.includes('sem reposição')) {
-      await executarFechamento(page, sol, false);
+      await executarFechamento(page, frame, sol, false);
     } else {
       await page.close();
       await registrarFalha(sol.rowIndex + 1, sol, MOTIVO.TELA_INESPERADA, `Tipo fora do escopo da Fase 1: ${sol.tipo}`);
