@@ -368,16 +368,13 @@ async function lerPendentes() {
 //  ESCREVE NA PLANILHA — navega até a célula e digita o valor
 // ═══════════════════════════════════════════════════════════════════
 // Retorna a referência de célula que a Caixa de Nome está mostrando agora (ex: "N3618")
+// #t-name-box é o id real e estável da Caixa de Nome do Google Sheets — não usar seletores "chutados"
 async function celulaAtual(planilha) {
-  const seletores = ['.docs-name-box input', '#t-name-box', '.docs-name-box'];
-  for (const sel of seletores) {
-    const valor = await planilha.locator(sel).first().inputValue().catch(() => null);
-    if (valor) return valor.trim().toUpperCase();
-  }
-  return null;
+  return await planilha.locator('#t-name-box').first().inputValue()
+    .then(v => v.trim().toUpperCase()).catch(() => null);
 }
 
-// Navega até a célula e CONFIRMA que chegou lá antes de deixar escrever — nunca escreve "no escuro"
+// Navega até a célula e CONFIRMA (com foco real + valor real) que chegou lá antes de deixar escrever
 async function navegarParaCelula(planilha, letra, row) {
   const alvo = `${letra}${row}`.toUpperCase();
 
@@ -385,21 +382,22 @@ async function navegarParaCelula(planilha, letra, row) {
   await planilha.keyboard.press('Escape');
   await planilha.waitForTimeout(300);
 
-  const seletores = ['.docs-name-box input', '#t-name-box', '.docs-name-box', '[aria-label="Name Box"]'];
-  let caixaNome = null;
-  for (const sel of seletores) {
-    const loc = planilha.locator(sel).first();
-    if (await loc.isVisible().catch(() => false)) { caixaNome = loc; break; }
-  }
-  if (!caixaNome) {
-    throw new Error(`Não foi possível localizar a Caixa de Nome da planilha (destino: ${alvo})`);
+  const caixaNome = planilha.locator('#t-name-box');
+  const visivel = await caixaNome.isVisible({ timeout: 5000 }).catch(() => false);
+  if (!visivel) {
+    throw new Error(`Caixa de Nome (#t-name-box) não está visível na tela (destino: ${alvo}) — não vou adivinhar outro lugar para clicar.`);
   }
 
   inf(`  → navegando para a célula ${alvo}...`);
   await apontarPara(planilha, caixaNome);
-  await caixaNome.click().catch(() => {});
+  await caixaNome.click();
 
-  await planilha.waitForTimeout(200);
+  // Confirma que o FOCO realmente foi para a Caixa de Nome antes de digitar qualquer coisa
+  const focado = await planilha.evaluate(() => document.activeElement && document.activeElement.id === 't-name-box').catch(() => false);
+  if (!focado) {
+    throw new Error(`Cliquei na Caixa de Nome mas o foco não foi para ela (destino: ${alvo}) — abortando, algo bloqueou o clique.`);
+  }
+
   await planilha.keyboard.press('Control+a');
   await planilha.keyboard.type(alvo, { delay: 60 });
   await planilha.keyboard.press('Enter');
@@ -543,7 +541,14 @@ async function abrirBackoffice() {
   await page.waitForLoadState('networkidle').catch(() => {});
 
   const campoBusca = page.getByPlaceholder('Digite o nome do profissional, e-mail ou CPF');
-  await campoBusca.waitFor({ state: 'visible', timeout: 20000 });
+  let apareceu = await campoBusca.waitFor({ state: 'visible', timeout: 20000 }).then(() => true).catch(() => false);
+
+  if (!apareceu) {
+    aviso('Campo de busca não apareceu — tentando recarregar a tela de Profissionais...');
+    await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForLoadState('networkidle').catch(() => {});
+    await campoBusca.waitFor({ state: 'visible', timeout: 20000 }); // se falhar de novo, lança erro normalmente
+  }
 
   ok('Tela de Profissionais aberta');
   return page;
