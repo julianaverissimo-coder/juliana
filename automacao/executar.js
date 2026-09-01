@@ -524,14 +524,13 @@ async function registrarFalha(rowNum, sol, motivo, detalhe = '') {
 //  BACKOFFICE — abre em aba separada
 // ═══════════════════════════════════════════════════════════════════
 async function abrirBackoffice() {
-  await garantirNavegador(); // garante que o Chrome ainda está vivo antes de abrir aba nova
-
-  // O Chrome pode "descartar" a aba em segundo plano por falta de recursos, mesmo com a
-  // janela continuando aberta — isso derruba o objeto "page" no meio do processo. Por isso,
-  // se detectarmos que fechou, recriamos a aba do zero em vez de travar tudo.
+  // O Chrome pode "descartar" a aba (ou o navegador inteiro ficar sem recurso para abrir
+  // abas novas) mesmo com a janela continuando aberta. Por isso, a cada tentativa, garante
+  // que o navegador está de verdade utilizável — reiniciando o Chrome inteiro se preciso.
   for (let recriacoes = 1; recriacoes <= 2; recriacoes++) {
     let page;
     try {
+      await garantirNavegador();
       page = await _ctx.newPage();
       await injetarCursor(page);
       inf('Abrindo Backoffice...');
@@ -585,10 +584,14 @@ async function abrirBackoffice() {
       return { page, frame: obterFrameConteudo(page) };
 
     } catch (e) {
-      const fechou = /closed|Target page|context or browser/i.test(e.message || '');
-      if (fechou && recriacoes < 2) {
-        aviso(`A aba do Backoffice fechou sozinha (provável falta de recursos) — recriando aba (tentativa ${recriacoes + 1}/2)...`);
+      const problemaRecurso = /closed|Target page|context or browser|createTarget|Failed to open a new tab|Protocol error/i.test(e.message || '');
+      if (problemaRecurso && recriacoes < 2) {
+        aviso(`Problema de recurso no Chrome (${e.message}) — reiniciando o navegador inteiro (tentativa ${recriacoes + 1}/2)...`);
         await page?.close().catch(() => {});
+        try { await _ctx?.close(); } catch {} // força reiniciar o Chrome do zero, não só a aba
+        _ctx = null;
+        _planilhaPage = null;
+        await new Promise(r => setTimeout(r, 3000)); // dá um tempo pro Windows liberar memória
         continue;
       }
       throw e; // erro diferente, ou já tentamos recriar — deixa subir normalmente
