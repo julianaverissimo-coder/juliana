@@ -296,6 +296,9 @@ function _processarCSV(csv) {
     if (!row || row.length < 10) continue;
     const status = (row[COL.STATUS] || '').trim();
     if (status !== '' && status !== '~') continue;
+    // Status fica em branco mesmo após erro (decisão do gestor) — usa a coluna Agente para não reprocessar
+    const agenteIA = (row[COL.AGENTE] || '').trim().toUpperCase();
+    if (agenteIA === 'ERRO' || agenteIA === 'REALIZADO') continue;
     const tipo  = (row[COL.TIPO]  || '').trim();
     const email = (row[COL.EMAIL] || '').trim().toLowerCase();
     if (!tiposValidos.some(t => tipo.toLowerCase().includes(t))) continue;
@@ -499,11 +502,11 @@ async function registrarSucesso(rowNum, sol) {
 }
 
 // motivo deve ser um dos valores de MOTIVO (vai como texto livre na coluna T)
+// NUNCA marca Status (N) — isso fica em branco para o gestor decidir. Só registra o erro na coluna S/T.
 async function registrarFalha(rowNum, sol, motivo, detalhe = '') {
   inf('Registrando falha na planilha...');
   const detalheCurto = String(detalhe ? `${motivo} — ${detalhe}` : motivo).substring(0, 200);
   await atualizarPlanilha(rowNum, {
-    [COL.STATUS]:     STATUS.REPROVADO,
     [COL.ANALISTA]:   'AGENTE DE IA',
     [COL.DATA_EXEC]:  agoraData(),
     [COL.HORA_EXEC]:  agoraHorario(),
@@ -516,6 +519,7 @@ async function registrarFalha(rowNum, sol, motivo, detalhe = '') {
 //  BACKOFFICE — abre em aba separada
 // ═══════════════════════════════════════════════════════════════════
 async function abrirBackoffice() {
+  await garantirNavegador(); // garante que o Chrome ainda está vivo antes de abrir aba nova
   const page = await _ctx.newPage();
   await injetarCursor(page);
   inf('Abrindo Backoffice...');
@@ -728,13 +732,6 @@ async function processarSolicitacao(sol) {
   inf(`Tipo  : ${sol.tipo}`);
   inf(`Linha : ${sol.rowIndex + 1}`);
   sep();
-
-  // Sinaliza na planilha que esta linha está sendo processada (marca "Em andamento" na lista)
-  try {
-    await selecionarNaLista(colLetra(COL.STATUS), sol.rowIndex + 1, 'Em andamento');
-  } catch (e) {
-    aviso(`Não consegui marcar "Em andamento" na linha ${sol.rowIndex + 1}: ${e.message}`);
-  }
 
   // Já tentado antes (ex: crash na execução anterior deixou o Status em branco de novo)
   if (sol.jaProcessadoAntes) {
