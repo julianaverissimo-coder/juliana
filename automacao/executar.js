@@ -430,7 +430,12 @@ async function escreverNaCelula(letra, row, valor) {
 async function lerCelulaAtual(planilha) {
   await planilha.keyboard.press('Control+c');
   await planilha.waitForTimeout(200);
-  return await planilha.evaluate(() => navigator.clipboard.readText()).catch(() => null);
+  // Nunca deixa travar para sempre: se a leitura do clipboard não responder em 3s, desiste
+  const resultado = await Promise.race([
+    planilha.evaluate(() => navigator.clipboard.readText()).catch(() => null),
+    new Promise(resolve => setTimeout(() => resolve('__TIMEOUT__'), 3000)),
+  ]);
+  return resultado === '__TIMEOUT__' ? null : resultado;
 }
 
 // Para colunas com LISTA SUSPENSA (Status, Analista, Agente de IA): abre a lista e CLICA na opção.
