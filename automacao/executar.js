@@ -546,17 +546,20 @@ async function abrirBackoffice() {
   }
 
   // Garante que está na tela de consulta de profissionais, com o campo de busca visível
-  await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await page.waitForLoadState('networkidle').catch(() => {});
-
   const campoBusca = page.getByRole('textbox').first();
-  let apareceu = await campoBusca.waitFor({ state: 'visible', timeout: 20000 }).then(() => true).catch(() => false);
+  let apareceu = false;
+
+  for (let tentativa = 1; tentativa <= 3 && !apareceu; tentativa++) {
+    await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    apareceu = await campoBusca.waitFor({ state: 'visible', timeout: 60000 }).then(() => true).catch(() => false);
+    if (!apareceu) aviso(`Campo de busca não apareceu (tentativa ${tentativa}/3) — recarregando...`);
+  }
 
   if (!apareceu) {
-    aviso('Campo de busca não apareceu — tentando recarregar a tela de Profissionais...');
-    await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForLoadState('networkidle').catch(() => {});
-    await campoBusca.waitFor({ state: 'visible', timeout: 20000 }); // se falhar de novo, lança erro normalmente
+    const caminho = path.join(__dirname, `diagnostico_backoffice_${Date.now()}.png`);
+    await page.screenshot({ path: caminho, fullPage: true }).catch(() => {});
+    throw new Error(`Campo de busca da tela de Profissionais não apareceu depois de 3 tentativas. Print salvo em: ${caminho}`);
   }
 
   ok('Tela de Profissionais aberta');
