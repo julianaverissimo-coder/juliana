@@ -525,58 +525,75 @@ async function registrarFalha(rowNum, sol, motivo, detalhe = '') {
 // ═══════════════════════════════════════════════════════════════════
 async function abrirBackoffice() {
   await garantirNavegador(); // garante que o Chrome ainda está vivo antes de abrir aba nova
-  const page = await _ctx.newPage();
-  await injetarCursor(page);
-  inf('Abrindo Backoffice...');
-  await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await page.waitForTimeout(2000);
 
-  const ehLogin = page.url().includes('login') || page.url().includes('auth') ||
-    await page.locator('input[type="email"]').isVisible().catch(() => false);
+  // O Chrome pode "descartar" a aba em segundo plano por falta de recursos, mesmo com a
+  // janela continuando aberta — isso derruba o objeto "page" no meio do processo. Por isso,
+  // se detectarmos que fechou, recriamos a aba do zero em vez de travar tudo.
+  for (let recriacoes = 1; recriacoes <= 2; recriacoes++) {
+    let page;
+    try {
+      page = await _ctx.newPage();
+      await injetarCursor(page);
+      inf('Abrindo Backoffice...');
+      await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(2000);
 
-  if (ehLogin) {
-    inf('Fazendo login no Backoffice...');
-    await page.locator('input[type="email"], input[name*="email"]').first().fill(LOGIN_BACKOFFICE.email);
-    await page.waitForTimeout(400);
-    await page.locator('input[type="password"]').first().fill(LOGIN_BACKOFFICE.senha);
-    await page.waitForTimeout(400);
-    await page.locator('button[type="submit"], button:has-text("Entrar")').first().click();
-    await page.waitForTimeout(3000);
-    ok('Login realizado');
-  }
+      const ehLogin = page.url().includes('login') || page.url().includes('auth') ||
+        await page.locator('input[type="email"]').isVisible().catch(() => false);
 
-  // Garante que está na tela de consulta de profissionais, com o campo de busca visível
-  // (o conteúdo real fica dentro de um iframe — precisa aguardar ele existir e carregar)
-  let apareceu = false;
-  let campoBusca = null;
+      if (ehLogin) {
+        inf('Fazendo login no Backoffice...');
+        await page.locator('input[type="email"], input[name*="email"]').first().fill(LOGIN_BACKOFFICE.email);
+        await page.waitForTimeout(400);
+        await page.locator('input[type="password"]').first().fill(LOGIN_BACKOFFICE.senha);
+        await page.waitForTimeout(400);
+        await page.locator('button[type="submit"], button:has-text("Entrar")').first().click();
+        await page.waitForTimeout(3000);
+        ok('Login realizado');
+      }
 
-  for (let tentativa = 1; tentativa <= 3 && !apareceu; tentativa++) {
-    await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(1500); // dá tempo do iframe ser criado
+      // Garante que está na tela de consulta de profissionais, com o campo de busca visível
+      // (o conteúdo real fica dentro de um iframe — precisa aguardar ele existir e carregar)
+      let apareceu = false;
 
-    const frameConteudo = obterFrameConteudo(page);
-    campoBusca = frameConteudo.getByRole('textbox').first();
-    apareceu = await campoBusca.waitFor({ state: 'visible', timeout: 60000 }).then(() => true).catch(() => false);
+      for (let tentativa = 1; tentativa <= 3 && !apareceu; tentativa++) {
+        await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(1500); // dá tempo do iframe ser criado
 
-    if (!apareceu) {
-      // Diagnóstico real: o que existe de fato na página/iframe nesse momento?
-      const urlAtual     = page.url();
-      const totalInputs  = await frameConteudo.locator('input').count().catch(() => -1);
-      const totalIframes = page.frames().length - 1; // -1 porque a página principal também conta como "frame"
-      const temTextoBusca = await frameConteudo.getByText('profissional', { exact: false }).count().catch(() => -1);
-      aviso(`Campo de busca não apareceu (tentativa ${tentativa}/3). URL: ${urlAtual} | inputs no frame: ${totalInputs} | iframes: ${totalIframes} | ocorrências do texto "profissional": ${temTextoBusca}`);
+        const frameConteudo = obterFrameConteudo(page);
+        const campoBusca = frameConteudo.getByRole('textbox').first();
+        apareceu = await campoBusca.waitFor({ state: 'visible', timeout: 60000 }).then(() => true).catch(() => false);
+
+        if (!apareceu) {
+          // Diagnóstico real: o que existe de fato na página/iframe nesse momento?
+          const urlAtual      = page.url();
+          const totalInputs   = await frameConteudo.locator('input').count().catch(() => -1);
+          const totalIframes  = page.frames().length - 1; // -1 porque a página principal também conta como "frame"
+          const temTextoBusca = await frameConteudo.getByText('profissional', { exact: false }).count().catch(() => -1);
+          aviso(`Campo de busca não apareceu (tentativa ${tentativa}/3). URL: ${urlAtual} | inputs no frame: ${totalInputs} | iframes: ${totalIframes} | ocorrências do texto "profissional": ${temTextoBusca}`);
+        }
+      }
+
+      if (!apareceu) {
+        const caminho = path.join(__dirname, `diagnostico_backoffice_${Date.now()}.png`);
+        await page.screenshot({ path: caminho, fullPage: true }).catch(() => {});
+        throw new Error(`Campo de busca da tela de Profissionais não apareceu depois de 3 tentativas. Print salvo em: ${caminho}`);
+      }
+
+      ok('Tela de Profissionais aberta');
+      return { page, frame: obterFrameConteudo(page) };
+
+    } catch (e) {
+      const fechou = /closed|Target page|context or browser/i.test(e.message || '');
+      if (fechou && recriacoes < 2) {
+        aviso(`A aba do Backoffice fechou sozinha (provável falta de recursos) — recriando aba (tentativa ${recriacoes + 1}/2)...`);
+        await page?.close().catch(() => {});
+        continue;
+      }
+      throw e; // erro diferente, ou já tentamos recriar — deixa subir normalmente
     }
   }
-
-  if (!apareceu) {
-    const caminho = path.join(__dirname, `diagnostico_backoffice_${Date.now()}.png`);
-    await page.screenshot({ path: caminho, fullPage: true }).catch(() => {});
-    throw new Error(`Campo de busca da tela de Profissionais não apareceu depois de 3 tentativas. Print salvo em: ${caminho}`);
-  }
-
-  ok('Tela de Profissionais aberta');
-  return { page, frame: obterFrameConteudo(page) };
 }
 
 // O conteúdo real do Backoffice fica dentro de um iframe — os elementos (campos, botões, tabela)
