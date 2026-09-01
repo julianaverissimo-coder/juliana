@@ -553,7 +553,15 @@ async function abrirBackoffice() {
     await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
     apareceu = await campoBusca.waitFor({ state: 'visible', timeout: 60000 }).then(() => true).catch(() => false);
-    if (!apareceu) aviso(`Campo de busca não apareceu (tentativa ${tentativa}/3) — recarregando...`);
+
+    if (!apareceu) {
+      // Diagnóstico real: o que existe de fato na página nesse momento?
+      const urlAtual     = page.url();
+      const totalInputs  = await page.locator('input').count().catch(() => -1);
+      const totalIframes = page.frames().length - 1; // -1 porque a página principal também conta como "frame"
+      const temTextoBusca = await page.getByText('profissional', { exact: false }).count().catch(() => -1);
+      aviso(`Campo de busca não apareceu (tentativa ${tentativa}/3). URL: ${urlAtual} | inputs na página: ${totalInputs} | iframes: ${totalIframes} | ocorrências do texto "profissional": ${temTextoBusca}`);
+    }
   }
 
   if (!apareceu) {
