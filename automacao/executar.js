@@ -218,10 +218,18 @@ function aguardarEnter(mensagem) {
 
 async function abrirPlanilha() {
   await garantirNavegador();
-  if (_planilhaPage && !_planilhaPage.isClosed()) {
-    const url = _planilhaPage.url();
-    if (url.includes('docs.google.com/spreadsheets')) return _planilhaPage;
+
+  // Verifica se a aba da planilha ainda está de fato utilizável (não só "não fechada")
+  try {
+    if (_planilhaPage && !_planilhaPage.isClosed()) {
+      const url = _planilhaPage.url();
+      if (url.includes('docs.google.com/spreadsheets')) return _planilhaPage;
+    }
+  } catch {
+    aviso('Aba da planilha parou de responder — abrindo uma nova.');
+    _planilhaPage = null;
   }
+
   _planilhaPage = await _ctx.newPage();
   await injetarCursor(_planilhaPage);
   inf('Abrindo planilha no Chrome...');
@@ -489,25 +497,35 @@ function colLetra(idx) {
 }
 
 async function atualizarPlanilha(rowNum, colunas) {
-  try {
-    for (const [colIdx, valor] of Object.entries(colunas)) {
-      const idx = parseInt(colIdx);
-      if (COLUNAS_LISTA.has(idx)) {
-        await selecionarNaLista(colLetra(idx), rowNum, valor);
-      } else {
-        await escreverNaCelula(colLetra(idx), rowNum, valor);
+  for (let tentativa = 1; tentativa <= 2; tentativa++) {
+    try {
+      for (const [colIdx, valor] of Object.entries(colunas)) {
+        const idx = parseInt(colIdx);
+        if (COLUNAS_LISTA.has(idx)) {
+          await selecionarNaLista(colLetra(idx), rowNum, valor);
+        } else {
+          await escreverNaCelula(colLetra(idx), rowNum, valor);
+        }
       }
+      // Salva com Ctrl+S
+      const planilha = await abrirPlanilha();
+      await planilha.keyboard.press('Control+s');
+      await planilha.waitForTimeout(500);
+      ok(`Planilha atualizada: linha ${rowNum}`);
+      return true;
+    } catch(e) {
+      const problemaRecurso = /closed|Target page|context or browser/i.test(e.message || '');
+      if (problemaRecurso && tentativa < 2) {
+        aviso(`Falha ao escrever na planilha (${e.message}) — reabrindo aba e tentando de novo...`);
+        _planilhaPage = null;
+        await new Promise(r => setTimeout(r, 2000));
+        continue;
+      }
+      err('Erro ao atualizar planilha: ' + e.message);
+      return false;
     }
-    // Salva com Ctrl+S
-    const planilha = await abrirPlanilha();
-    await planilha.keyboard.press('Control+s');
-    await planilha.waitForTimeout(500);
-    ok(`Planilha atualizada: linha ${rowNum}`);
-    return true;
-  } catch(e) {
-    err('Erro ao atualizar planilha: ' + e.message);
-    return false;
   }
+  return false;
 }
 
 async function registrarSucesso(rowNum, sol) {
@@ -680,7 +698,20 @@ async function executarFechamento(page, frame, sol, comReposicao) {
 
   inf('Abrindo menu ⋮...');
   const linhaAtiva = frame.locator('table tbody tr, [role="row"]').filter({ hasText: 'Ativo' }).last();
-  const botaoMenu  = linhaAtiva.locator('button').last();
+
+  // O ⋮ pode não ser um <button> de verdade — tenta várias possibilidades antes de desistir
+  const candidatosMenu = ['button', '[role="button"]', 'svg', 'a'];
+  let botaoMenu = null;
+  for (const sel of candidatosMenu) {
+    const cand = linhaAtiva.locator(sel).last();
+    if (await cand.isVisible({ timeout: 3000 }).catch(() => false)) { botaoMenu = cand; break; }
+  }
+
+  if (!botaoMenu) {
+    const totalCelulas = await linhaAtiva.locator('*').count().catch(() => -1);
+    throw new Error(`Botão de menu (⋮) não encontrado na linha do profissional. Elementos na linha: ${totalCelulas}`);
+  }
+
   await apontarPara(page, botaoMenu);
   await botaoMenu.click();
   await page.waitForTimeout(800);
