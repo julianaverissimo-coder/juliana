@@ -255,6 +255,12 @@ function jsonGvizParaLinhas(texto) {
   const inicio = texto.indexOf('{');
   const fim    = texto.lastIndexOf('}');
   const dados  = JSON.parse(texto.substring(inicio, fim + 1));
+
+  if (dados.status !== 'ok' || !dados.table) {
+    const detalhe = (dados.errors || []).map(e => e.detailed_message || e.message).join('; ');
+    throw new Error(`Google Visualization retornou status "${dados.status}"${detalhe ? ': ' + detalhe : ''}`);
+  }
+
   const linhas = [];
   for (const r of (dados.table.rows || [])) {
     const linha = (r.c || []).map(cel => {
