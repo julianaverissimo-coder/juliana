@@ -14,9 +14,7 @@ const LOGIN_BACKOFFICE = {
 
 const EMAIL_ALERTA     = 'juliana.verissimo@conexasaude.com.br';
 const PLANILHA_URL     = 'https://docs.google.com/spreadsheets/d/1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8/edit#gid=1809280439';
-// JSON em vez de CSV: evita corrupção de contagem de linhas quando algum texto digitado
-// (ex: uma aspas solta escrita por um médico) desalinha um parser de CSV feito à mão.
-const PLANILHA_JSON    = 'https://docs.google.com/spreadsheets/d/1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8/gviz/tq?tqx=out:json&gid=1809280439';
+const PLANILHA_CSV     = 'https://docs.google.com/spreadsheets/d/1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8/gviz/tq?tqx=out:csv&gid=1809280439';
 const BACKOFFICE_URL   = 'https://backoffice.conexasaude.com.br/profissional/consulta';
 const PROFILE_DIR      = path.join(__dirname, 'chrome_profile');
 const PROCESSADOS_FILE = path.join(__dirname, 'processados.json');
@@ -248,29 +246,34 @@ async function abrirPlanilha() {
 // ═══════════════════════════════════════════════════════════════════
 //  PARSE CSV
 // ═══════════════════════════════════════════════════════════════════
-// Converte a resposta JSON do Google Visualization API em linhas/colunas de texto.
-// Cada posição do array corresponde exatamente a uma linha real da planilha (índice 0 = linha 1),
-// sem risco de desalinhar por causa de aspas/vírgulas dentro do texto digitado pelos médicos.
-function jsonGvizParaLinhas(texto) {
-  const inicio = texto.indexOf('{');
-  const fim    = texto.lastIndexOf('}');
-  const dados  = JSON.parse(texto.substring(inicio, fim + 1));
-
-  if (dados.status !== 'ok' || !dados.table) {
-    const detalhe = (dados.errors || []).map(e => e.detailed_message || e.message).join('; ');
-    throw new Error(`Google Visualization retornou status "${dados.status}"${detalhe ? ': ' + detalhe : ''}`);
-  }
-
+// Parser de CSV correto (RFC 4180): trata aspas DUPLICADAS ("") dentro de um campo
+// como uma aspas literal, sem desligar o estado "dentro de campo com aspas" no meio
+// do caminho. O bug anterior tratava toda aspas isoladamente, e um texto digitado
+// por um médico contendo aspas (ex: 12") desalinhava a contagem de linhas dali em diante.
+function parseCSV(texto) {
   const linhas = [];
-  for (const r of (dados.table.rows || [])) {
-    const linha = (r.c || []).map(cel => {
-      if (!cel) return '';
-      if (cel.f !== undefined && cel.f !== null) return String(cel.f); // valor formatado (datas, etc.)
-      if (cel.v !== undefined && cel.v !== null) return String(cel.v);
-      return '';
-    });
-    linhas.push(linha);
+  let campo = '', linha = [], dentro = false;
+
+  for (let i = 0; i < texto.length; i++) {
+    const c = texto[i];
+
+    if (dentro) {
+      if (c === '"') {
+        if (texto[i + 1] === '"') { campo += '"'; i++; } // aspas literal escapada
+        else { dentro = false; }                          // fecha o campo com aspas
+      } else {
+        campo += c;
+      }
+      continue;
+    }
+
+    if (c === '"') { dentro = true; }
+    else if (c === ',') { linha.push(campo.trim()); campo = ''; }
+    else if (c === '\r') { /* ignora, tratado junto com \n abaixo */ }
+    else if (c === '\n') { linha.push(campo.trim()); linhas.push(linha); linha = []; campo = ''; }
+    else { campo += c; }
   }
+  if (campo || linha.length) { linha.push(campo.trim()); linhas.push(linha); }
   return linhas;
 }
 
@@ -292,8 +295,8 @@ function parsearDescricao(texto) {
 // ═══════════════════════════════════════════════════════════════════
 //  PROCESSA CSV E RETORNA PENDENTES
 // ═══════════════════════════════════════════════════════════════════
-function _processarCSV(jsonTexto) {
-  const linhas = jsonGvizParaLinhas(jsonTexto);
+function _processarCSV(csv) {
+  const linhas = parseCSV(csv);
   if (linhas.length < 2) { aviso('Planilha sem dados'); return []; }
 
   const processados  = carregarProcessados();
@@ -358,13 +361,13 @@ async function lerPendentes() {
 
   for (let tentativa = 1; tentativa <= 2; tentativa++) {
     try {
-      const jsonTexto = await planilha.evaluate(async (url) => {
+      const csv = await planilha.evaluate(async (url) => {
         const r = await fetch(url, { credentials: 'include' });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.text();
-      }, PLANILHA_JSON);
+      }, PLANILHA_CSV);
 
-      return _processarCSV(jsonTexto);
+      return _processarCSV(csv);
     } catch(e) {
       if (tentativa < 2) {
         aviso(`Falha temporária ao ler planilha (tentativa ${tentativa}): ${e.message} — tentando de novo...`);
