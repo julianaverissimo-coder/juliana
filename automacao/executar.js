@@ -561,7 +561,7 @@ async function abrirBackoffice() {
         await page.waitForTimeout(1500); // dá tempo do iframe ser criado
 
         const frameConteudo = obterFrameConteudo(page);
-        const campoBusca = frameConteudo.getByRole('textbox').first();
+        const campoBusca = frameConteudo.locator('input').first();
         apareceu = await campoBusca.waitFor({ state: 'visible', timeout: 60000 }).then(() => true).catch(() => false);
 
         if (!apareceu) {
@@ -620,7 +620,7 @@ async function buscarProfissional(page, frame, email) {
   await page.waitForLoadState('networkidle').catch(() => {});
   await page.waitForTimeout(1500);
 
-  const campo = frame.getByRole('textbox').first();
+  const campo = frame.locator('input').first();
   await campo.waitFor({ state: 'visible', timeout: 10000 });
   await apontarPara(page, campo);
   await campo.clear();
