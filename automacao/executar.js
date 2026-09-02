@@ -664,7 +664,7 @@ async function executarFechamento(page, frame, sol, comReposicao) {
   if (!dados) throw new Error(`Não foi possível extrair datas: "${sol.desc}"`);
 
   inf('Abrindo menu ⋮...');
-  const linhaAtiva = frame.locator('tr').filter({ hasText: 'Ativo' }).last();
+  const linhaAtiva = frame.locator('table tbody tr, [role="row"]').filter({ hasText: 'Ativo' }).last();
   const botaoMenu  = linhaAtiva.locator('button').last();
   await apontarPara(page, botaoMenu);
   await botaoMenu.click();
