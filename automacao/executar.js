@@ -359,9 +359,10 @@ async function celulaAtual(planilha) {
 }
 
 // Navega até a célula e CONFIRMA que chegou lá antes de deixar escrever — nunca escreve "no escuro".
-// A Caixa de Nome do Sheets tem autocomplete/histórico: digitar rápido demais pode fazer o Enter
-// confirmar uma sugestão errada em vez do endereço digitado (ex: pedir "O7" e cair em "O6920").
-// Por isso: limpa explicitamente (Ctrl+A + Backspace, não só digitar por cima), digita mais lento,
+// A Caixa de Nome tem histórico: digitar tecla por tecla pode acionar o autocomplete do PRÓPRIO
+// NAVEGADOR (não do Sheets) para esse campo de texto — aí o Enter confirma uma sugestão antiga
+// em vez do endereço digitado (ex: pedir "O7" e cair em "O6920", um endereço usado antes).
+// Por isso define o valor de uma vez (fill), que não dispara esse popup tecla-a-tecla do Chrome,
 // e tenta de novo até 3x antes de desistir — só então aborta a escrita para não gravar em lugar errado.
 async function navegarParaCelula(planilha, letra, row) {
   const alvo = `${letra}${row}`.toUpperCase();
@@ -372,21 +373,25 @@ async function navegarParaCelula(planilha, letra, row) {
     await planilha.keyboard.press('Escape');
     await planilha.waitForTimeout(300);
 
-    let clicou = false;
+    let caixaNome = null;
     for (const sel of seletores) {
-      clicou = await planilha.locator(sel).first().click({ timeout: 2000 })
-        .then(() => true).catch(() => false);
-      if (clicou) break;
+      const loc = planilha.locator(sel).first();
+      const clicou = await loc.click({ timeout: 2000 }).then(() => true).catch(() => false);
+      if (clicou) { caixaNome = loc; break; }
     }
-    if (!clicou) {
+    if (!caixaNome) {
       throw new Error(`Não foi possível localizar a Caixa de Nome da planilha (destino: ${alvo})`);
     }
 
     await planilha.waitForTimeout(200);
-    await planilha.keyboard.press('Control+a');
-    await planilha.keyboard.press('Backspace');
-    await planilha.waitForTimeout(150);
-    await planilha.keyboard.type(alvo, { delay: 60 });
+    const preencheuDireto = await caixaNome.fill(alvo).then(() => true).catch(() => false);
+    if (!preencheuDireto) {
+      // Reserva, caso o elemento clicado não seja um <input> preenchível diretamente
+      await planilha.keyboard.press('Control+a');
+      await planilha.keyboard.press('Backspace');
+      await planilha.waitForTimeout(150);
+      await planilha.keyboard.type(alvo, { delay: 60 });
+    }
     await planilha.waitForTimeout(250);
     await planilha.keyboard.press('Enter');
     await planilha.waitForTimeout(600);
