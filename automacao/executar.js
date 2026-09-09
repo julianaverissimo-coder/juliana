@@ -738,14 +738,9 @@ async function processarSolicitacao(sol) {
   inf(`Linha : ${sol.rowIndex + 1}`);
   sep();
 
-  // Sinaliza na planilha que esta linha está sendo processada
-  try {
-    const planilha = await abrirPlanilha();
-    await navegarParaCelula(planilha, colLetra(COL.STATUS), sol.rowIndex + 1);
-    await planilha.keyboard.type('⏳');
-    await planilha.keyboard.press('Escape');
-    await planilha.waitForTimeout(300);
-  } catch {}
+  // (Indicador visual "⏳" na planilha desativado por ora — a navegação pela Caixa de Nome
+  // está instável nessa planilha e travava aqui antes mesmo de chegar no Backoffice. Prioridade
+  // agora é validar o fluxo no Backoffice; a escrita na planilha volta depois, via Apps Script.)
 
   // Já tentado antes (ex: crash na execução anterior deixou o Status em branco de novo)
   if (sol.jaProcessadoAntes) {
