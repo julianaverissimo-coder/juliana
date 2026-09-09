@@ -582,9 +582,11 @@ async function executarFechamento(page, sol, comReposicao) {
   const linhaAtiva = linhaDoResultado(page);
   await linhaAtiva.scrollIntoViewIfNeeded().catch(() => {});
 
-  // Tenta algumas formas diferentes de localizar o botão de menu (⋮), pois nem
-  // todo botão de ação é uma tag <button> visível — a primeira que aparecer "clicável" vence.
+  // O botão de menu (⋮) desta tela é construído com Mantine: não é uma tag <button> de
+  // verdade, é uma <div id="mantine-XXXXX-target"> (confirmado via inspeção real da tela).
+  // Por isso tenta primeiro esse padrão, com <button>/[role="button"] como reserva.
   const candidatosMenu = [
+    linhaAtiva.locator('[id*="-target"]').last(),
     linhaAtiva.locator('button').last(),
     linhaAtiva.getByRole('button').last(),
     linhaAtiva.locator('[role="button"]').last(),
@@ -609,9 +611,20 @@ async function executarFechamento(page, sol, comReposicao) {
   }
   await page.waitForTimeout(800);
 
-  const itemAgenda = page.locator('[role="menuitem"]:has-text("Agenda"), li:has-text("Agenda"), a:has-text("Agenda")').last();
+  // Texto EXATO "Agenda" — o menu também tem "Desbloquear agenda", que teria batido
+  // com uma busca por substring (e "Agenda" fica antes dela na lista, então .last() pegaria a errada).
+  const itemAgenda = page.locator('[role="menuitem"], li, a').filter({ hasText: /^\s*Agenda\s*$/ }).first();
+  const itemAgendaVisivel = await itemAgenda.isVisible({ timeout: 3000 }).catch(() => false);
+  if (!itemAgendaVisivel) {
+    // Pode estar fora da área visível do menu (lista rolável) — rola até aparecer.
+    await itemAgenda.scrollIntoViewIfNeeded().catch(() => {});
+  }
   await apontarPara(page, itemAgenda);
-  await itemAgenda.click();
+  const cliqueAgendaOk = await itemAgenda.click({ timeout: 10000 }).then(() => true).catch(() => false);
+  if (!cliqueAgendaOk) {
+    await salvarDiagnostico(page, 'item_agenda_nao_clicavel');
+    throw new Error('Não foi possível clicar em "Agenda" no menu — diagnóstico salvo em automacao/diagnostico/, envie o print e o .html para eu corrigir com precisão.');
+  }
   await page.waitForTimeout(2000);
 
   const abaAusencias = page.locator('text=Ausências');
