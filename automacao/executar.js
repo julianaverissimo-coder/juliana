@@ -453,18 +453,14 @@ async function registrarSucesso(rowNum, sol) {
 async function registrarFalha(rowNum, sol, categoriaAgente, detalhe = '') {
   inf('Registrando falha na planilha...');
   const detalheCurto = String(detalhe || categoriaAgente).substring(0, 120);
-  // Status PRIMEIRO também aqui: alguns casos de falha (ex: erro técnico durante a programação)
-  // podem ocorrer depois que uma ação parcial já foi feita no Backoffice — travar a linha evita
-  // reprocessar e repetir essa ação. Se faltar algum detalhe nas colunas seguintes, o pior caso
-  // é um "Reprovado" com menos contexto, o que é mais seguro que uma duplicidade no Backoffice.
+  // Não grava a coluna Status em caso de falha (fica em branco, para revisão humana) —
+  // só as colunas de diagnóstico (Analista, Data/Hora, categoria do Agente e Observação).
   return atualizarPlanilha(rowNum, [
-    [COL.STATUS,     STATUS.REPROVADO],
     [COL.ANALISTA,   'AGENTE DE IA'],
     [COL.DATA_EXEC,  agoraData()],
     [COL.HORA_EXEC,  agoraHorario()],
     [COL.AGENTE,     categoriaAgente],
     [COL.OBSERVACAO, detalheCurto],
-    [COL.STATUS,     STATUS.REPROVADO],
   ]);
 }
 
