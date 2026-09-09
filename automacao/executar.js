@@ -358,36 +358,47 @@ async function celulaAtual(planilha) {
   return null;
 }
 
-// Navega até a célula e CONFIRMA que chegou lá antes de deixar escrever — nunca escreve "no escuro"
+// Navega até a célula e CONFIRMA que chegou lá antes de deixar escrever — nunca escreve "no escuro".
+// A Caixa de Nome do Sheets tem autocomplete/histórico: digitar rápido demais pode fazer o Enter
+// confirmar uma sugestão errada em vez do endereço digitado (ex: pedir "O7" e cair em "O6920").
+// Por isso: limpa explicitamente (Ctrl+A + Backspace, não só digitar por cima), digita mais lento,
+// e tenta de novo até 3x antes de desistir — só então aborta a escrita para não gravar em lugar errado.
 async function navegarParaCelula(planilha, letra, row) {
   const alvo = `${letra}${row}`.toUpperCase();
-
-  await planilha.bringToFront();
-  await planilha.keyboard.press('Escape');
-  await planilha.waitForTimeout(300);
-
   const seletores = ['.docs-name-box input', '#t-name-box', '.docs-name-box', '[aria-label="Name Box"]'];
-  let clicou = false;
-  for (const sel of seletores) {
-    clicou = await planilha.locator(sel).first().click({ timeout: 2000 })
-      .then(() => true).catch(() => false);
-    if (clicou) break;
-  }
-  if (!clicou) {
-    throw new Error(`Não foi possível localizar a Caixa de Nome da planilha (destino: ${alvo})`);
+
+  for (let tentativa = 1; tentativa <= 3; tentativa++) {
+    await planilha.bringToFront();
+    await planilha.keyboard.press('Escape');
+    await planilha.waitForTimeout(300);
+
+    let clicou = false;
+    for (const sel of seletores) {
+      clicou = await planilha.locator(sel).first().click({ timeout: 2000 })
+        .then(() => true).catch(() => false);
+      if (clicou) break;
+    }
+    if (!clicou) {
+      throw new Error(`Não foi possível localizar a Caixa de Nome da planilha (destino: ${alvo})`);
+    }
+
+    await planilha.waitForTimeout(200);
+    await planilha.keyboard.press('Control+a');
+    await planilha.keyboard.press('Backspace');
+    await planilha.waitForTimeout(150);
+    await planilha.keyboard.type(alvo, { delay: 60 });
+    await planilha.waitForTimeout(250);
+    await planilha.keyboard.press('Enter');
+    await planilha.waitForTimeout(600);
+
+    // Confirmação real: a Caixa de Nome precisa mostrar exatamente a célula pedida
+    const atual = await celulaAtual(planilha);
+    if (atual === alvo) return;
+
+    aviso(`Tentativa ${tentativa}/3: pedi ${alvo} e a caixa de nome mostrou "${atual}" — repetindo.`);
   }
 
-  await planilha.waitForTimeout(200);
-  await planilha.keyboard.press('Control+a');
-  await planilha.keyboard.type(alvo);
-  await planilha.keyboard.press('Enter');
-  await planilha.waitForTimeout(600);
-
-  // Confirmação real: a Caixa de Nome precisa mostrar exatamente a célula pedida
-  const atual = await celulaAtual(planilha);
-  if (atual !== alvo) {
-    throw new Error(`Navegação para célula falhou — pedido ${alvo}, caixa de nome mostra "${atual}". Abortando escrita para não gravar em lugar errado.`);
-  }
+  throw new Error(`Navegação para célula falhou após 3 tentativas — pedido ${alvo}. Abortando escrita para não gravar em lugar errado.`);
 }
 
 async function escreverNaCelula(letra, row, valor) {
@@ -403,9 +414,12 @@ function colLetra(idx) {
   return String.fromCharCode(65 + parseInt(idx));
 }
 
-async function atualizarPlanilha(rowNum, colunas) {
+// paresOrdenados: array de [colIdx, valor], gravados NA ORDEM DADA (não usar objeto simples —
+// chaves numéricas de objeto sempre iteram em ordem crescente, o que forçaria a coluna Status
+// a ser sempre a primeira a ser gravada).
+async function atualizarPlanilha(rowNum, paresOrdenados) {
   try {
-    for (const [colIdx, valor] of Object.entries(colunas)) {
+    for (const [colIdx, valor] of paresOrdenados) {
       await escreverNaCelula(colLetra(colIdx), rowNum, valor);
     }
     // Salva com Ctrl+S
@@ -422,27 +436,36 @@ async function atualizarPlanilha(rowNum, colunas) {
 
 async function registrarSucesso(rowNum, sol) {
   inf('Registrando sucesso na planilha...');
-  await atualizarPlanilha(rowNum, {
-    [COL.STATUS]:    STATUS.APROVADO,
-    [COL.ANALISTA]:  'AGENTE DE IA',
-    [COL.DATA_EXEC]: agoraData(),
-    [COL.HORA_EXEC]: agoraHorario(),
-    [COL.AGENTE]:    AGENTE.REALIZADO,
-  });
+  // Status PRIMEIRO: a ação real já foi executada no Backoffice, então a linha precisa ser
+  // travada como "Aprovado" antes de qualquer outra coisa — se uma coluna seguinte falhar ao
+  // gravar, o pior cenário é faltar um detalhe na planilha, nunca reprocessar (e repetir
+  // a mesma ação no Backoffice de novo).
+  return atualizarPlanilha(rowNum, [
+    [COL.STATUS,    STATUS.APROVADO],
+    [COL.ANALISTA,  'AGENTE DE IA'],
+    [COL.DATA_EXEC, agoraData()],
+    [COL.HORA_EXEC, agoraHorario()],
+    [COL.AGENTE,    AGENTE.REALIZADO],
+  ]);
 }
 
 // categoriaAgente deve ser um dos valores exatos de AGENTE (lista suspensa da coluna S)
 async function registrarFalha(rowNum, sol, categoriaAgente, detalhe = '') {
   inf('Registrando falha na planilha...');
   const detalheCurto = String(detalhe || categoriaAgente).substring(0, 120);
-  await atualizarPlanilha(rowNum, {
-    [COL.STATUS]:     STATUS.REPROVADO,
-    [COL.ANALISTA]:   'AGENTE DE IA',
-    [COL.DATA_EXEC]:  agoraData(),
-    [COL.HORA_EXEC]:  agoraHorario(),
-    [COL.AGENTE]:     categoriaAgente,
-    [COL.OBSERVACAO]: detalheCurto,
-  });
+  // Status PRIMEIRO também aqui: alguns casos de falha (ex: erro técnico durante a programação)
+  // podem ocorrer depois que uma ação parcial já foi feita no Backoffice — travar a linha evita
+  // reprocessar e repetir essa ação. Se faltar algum detalhe nas colunas seguintes, o pior caso
+  // é um "Reprovado" com menos contexto, o que é mais seguro que uma duplicidade no Backoffice.
+  return atualizarPlanilha(rowNum, [
+    [COL.STATUS,     STATUS.REPROVADO],
+    [COL.ANALISTA,   'AGENTE DE IA'],
+    [COL.DATA_EXEC,  agoraData()],
+    [COL.HORA_EXEC,  agoraHorario()],
+    [COL.AGENTE,     categoriaAgente],
+    [COL.OBSERVACAO, detalheCurto],
+    [COL.STATUS,     STATUS.REPROVADO],
+  ]);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -530,6 +553,28 @@ async function buscarProfissional(page, email) {
   return 'perfil_inativo';
 }
 
+// Mesma busca de linha usada em buscarProfissional (já validada como resultado único) —
+// evita usar uma segunda busca solta que pode acertar uma linha escondida/errada da tabela.
+function linhaDoResultado(page) {
+  return page.locator('table tbody tr, [role="row"]').filter({ hasNotText: 'ID Profissional' }).first();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  DIAGNÓSTICO — screenshot + HTML da tela no momento da falha
+// ═══════════════════════════════════════════════════════════════════
+const DIAG_DIR = path.join(__dirname, 'diagnostico');
+async function salvarDiagnostico(page, rotulo) {
+  try {
+    if (!fs.existsSync(DIAG_DIR)) fs.mkdirSync(DIAG_DIR);
+    const ts = agora().toISOString().replace(/[:.]/g, '-');
+    const base = path.join(DIAG_DIR, `${ts}_${rotulo}`);
+    await page.screenshot({ path: `${base}.png`, fullPage: true }).catch(() => {});
+    const html = await page.content().catch(() => '');
+    fs.writeFileSync(`${base}.html`, html);
+    aviso(`Diagnóstico salvo em: ${base}.png / ${base}.html`);
+  } catch (e) { err('Falha ao salvar diagnóstico: ' + e.message); }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  FLUXO A — FECHAMENTO (com e sem reposição)
 // ═══════════════════════════════════════════════════════════════════
@@ -538,10 +583,34 @@ async function executarFechamento(page, sol, comReposicao) {
   if (!dados) throw new Error(`Não foi possível extrair datas: "${sol.desc}"`);
 
   inf('Abrindo menu ⋮...');
-  const linhaAtiva = page.locator('tr').filter({ hasText: 'Ativo' }).last();
-  const botaoMenu  = linhaAtiva.locator('button').last();
+  const linhaAtiva = linhaDoResultado(page);
+  await linhaAtiva.scrollIntoViewIfNeeded().catch(() => {});
+
+  // Tenta algumas formas diferentes de localizar o botão de menu (⋮), pois nem
+  // todo botão de ação é uma tag <button> visível — a primeira que aparecer "clicável" vence.
+  const candidatosMenu = [
+    linhaAtiva.locator('button').last(),
+    linhaAtiva.getByRole('button').last(),
+    linhaAtiva.locator('[role="button"]').last(),
+  ];
+
+  let botaoMenu = null;
+  for (const candidato of candidatosMenu) {
+    const visivel = await candidato.isVisible({ timeout: 3000 }).catch(() => false);
+    if (visivel) { botaoMenu = candidato; break; }
+  }
+
+  if (!botaoMenu) {
+    await salvarDiagnostico(page, 'menu_nao_encontrado');
+    throw new Error('Botão de menu (⋮) não encontrado na linha do profissional — diagnóstico salvo em automacao/diagnostico/, envie o print e o .html para eu corrigir com precisão.');
+  }
+
   await apontarPara(page, botaoMenu);
-  await botaoMenu.click();
+  const cliqueOk = await botaoMenu.click({ timeout: 10000 }).then(() => true).catch(() => false);
+  if (!cliqueOk) {
+    await salvarDiagnostico(page, 'menu_nao_clicavel');
+    throw new Error('Não foi possível clicar no menu (⋮) — diagnóstico salvo em automacao/diagnostico/, envie o print e o .html para eu corrigir com precisão.');
+  }
   await page.waitForTimeout(800);
 
   const itemAgenda = page.locator('[role="menuitem"]:has-text("Agenda"), li:has-text("Agenda"), a:has-text("Agenda")').last();
@@ -666,8 +735,8 @@ async function processarSolicitacao(sol) {
 
   // Já tentado antes (ex: crash na execução anterior deixou o Status em branco de novo)
   if (sol.jaProcessadoAntes) {
-    await registrarFalha(sol.rowIndex + 1, sol, AGENTE.JA_REALIZADA_ANTES, 'Solicitação já havia sido processada anteriormente.');
-    return false;
+    const registrado = await registrarFalha(sol.rowIndex + 1, sol, AGENTE.JA_REALIZADA_ANTES, 'Solicitação já havia sido processada anteriormente.');
+    return { executado: false, registrado };
   }
 
   let page;
@@ -677,18 +746,18 @@ async function processarSolicitacao(sol) {
 
     if (resultado === 'nao_encontrado') {
       await page.close();
-      await registrarFalha(sol.rowIndex + 1, sol, AGENTE.MEDICO_NAO_ENCONTRADO, `E-mail: ${sol.email}`);
-      return false;
+      const registrado = await registrarFalha(sol.rowIndex + 1, sol, AGENTE.MEDICO_NAO_ENCONTRADO, `E-mail: ${sol.email}`);
+      return { executado: false, registrado };
     }
     if (resultado === 'perfil_inativo') {
       await page.close();
-      await registrarFalha(sol.rowIndex + 1, sol, AGENTE.PERFIL_INATIVO, `E-mail: ${sol.email}`);
-      return false;
+      const registrado = await registrarFalha(sol.rowIndex + 1, sol, AGENTE.PERFIL_INATIVO, `E-mail: ${sol.email}`);
+      return { executado: false, registrado };
     }
     if (resultado === 'sem_informacoes') {
       await page.close();
-      await registrarFalha(sol.rowIndex + 1, sol, AGENTE.SEM_INFORMACOES, 'Múltiplos perfis, e-mail inválido, ou caso ambíguo.');
-      return false;
+      const registrado = await registrarFalha(sol.rowIndex + 1, sol, AGENTE.SEM_INFORMACOES, 'Múltiplos perfis, e-mail inválido, ou caso ambíguo.');
+      return { executado: false, registrado };
     }
 
     ok('1 perfil ativo encontrado');
@@ -699,21 +768,21 @@ async function processarSolicitacao(sol) {
       await executarFechamento(page, sol, false);
     } else {
       await page.close();
-      await registrarFalha(sol.rowIndex + 1, sol, AGENTE.TELA_INESPERADA, `Tipo fora do escopo da Fase 1: ${sol.tipo}`);
-      return false;
+      const registrado = await registrarFalha(sol.rowIndex + 1, sol, AGENTE.TELA_INESPERADA, `Tipo fora do escopo da Fase 1: ${sol.tipo}`);
+      return { executado: false, registrado };
     }
 
     await page.waitForTimeout(2000);
     await page.close();
-    await registrarSucesso(sol.rowIndex + 1, sol);
-    salvarProcessado(sol.chave, { nome: sol.nome, email: sol.email, tipo: sol.tipo, data: sol.data });
-    return true;
+    const registrado = await registrarSucesso(sol.rowIndex + 1, sol);
+    if (registrado) salvarProcessado(sol.chave, { nome: sol.nome, email: sol.email, tipo: sol.tipo, data: sol.data });
+    return { executado: true, registrado };
 
   } catch(e) {
     err(`Erro: ${e.message}`);
     if (page) await page.close().catch(() => {});
-    await registrarFalha(sol.rowIndex + 1, sol, AGENTE.ERRO_TECNICO, e.message);
-    return false;
+    const registrado = await registrarFalha(sol.rowIndex + 1, sol, AGENTE.ERRO_TECNICO, e.message);
+    return { executado: false, registrado };
   }
 }
 
@@ -727,9 +796,16 @@ async function ciclo() {
   catch(e) { err('Erro ao ler planilha: ' + e.message); return; }
 
   for (const sol of pendentes) {
-    const sucesso = await processarSolicitacao(sol);
-    if (sucesso) ok(`Linha ${sol.rowIndex + 1} processada com sucesso.`);
-    else aviso(`Linha ${sol.rowIndex + 1} não processada — registrado na planilha.`);
+    const { executado, registrado } = await processarSolicitacao(sol);
+    if (executado && registrado) {
+      ok(`Linha ${sol.rowIndex + 1} processada com sucesso.`);
+    } else if (executado && !registrado) {
+      err(`Linha ${sol.rowIndex + 1}: ação foi executada no Backoffice, mas FALHOU ao registrar na planilha — verifique manualmente essa linha.`);
+    } else if (registrado) {
+      aviso(`Linha ${sol.rowIndex + 1} não processada — falha registrada na planilha.`);
+    } else {
+      err(`Linha ${sol.rowIndex + 1} não processada E também FALHOU ao registrar a falha na planilha — verifique manualmente essa linha.`);
+    }
     await new Promise(r => setTimeout(r, 3000));
   }
   inf(`Próxima verificação em ${INTERVALO_MS / 60000} minutos.`);
