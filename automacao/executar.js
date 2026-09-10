@@ -535,7 +535,13 @@ async function abrirBackoffice() {
   await page.waitForLoadState('networkidle').catch(() => {});
 
   const campoBusca = page.getByPlaceholder('Digite o nome do profissional, e-mail ou CPF');
-  await campoBusca.waitFor({ state: 'visible', timeout: 20000 });
+  try {
+    await campoBusca.waitFor({ state: 'visible', timeout: 40000 });
+  } catch (e) {
+    await salvarDiagnostico(page, 'tela_profissionais_nao_carregou');
+    await page.close().catch(() => {});
+    throw new Error('Tela de consulta de profissionais não carregou (campo de busca não apareceu) — diagnóstico salvo em automacao/diagnostico/, envie o print e o .html para eu corrigir com precisão.');
+  }
 
   ok('Tela de Profissionais aberta');
   return page;
