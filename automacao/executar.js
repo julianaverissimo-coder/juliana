@@ -3,14 +3,15 @@ const fs      = require('fs');
 const path    = require('path');
 const readline = require('readline');
 
+// Erro que interrompe TODA a execução (não só a linha atual) — usado quando a sessão do
+// Backoffice ou da planilha caiu para uma tela de login. O script nunca faz login
+// programático no Backoffice; se isso acontecer, é sinal de que a sessão expirou e precisa
+// de intervenção humana.
+class FalhaFatal extends Error {}
+
 // ═══════════════════════════════════════════════════════════════════
 //  CONFIGURAÇÕES
 // ═══════════════════════════════════════════════════════════════════
-
-const LOGIN_BACKOFFICE = {
-  email: 'juliana.verissimo@conexasaude.com.br',
-  senha: '74b225df2JUJU*',
-};
 
 const EMAIL_ALERTA     = 'juliana.verissimo@conexasaude.com.br';
 const PLANILHA_URL     = 'https://docs.google.com/spreadsheets/d/1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8/edit#gid=1809280439';
@@ -266,11 +267,32 @@ function parsearDescricao(texto) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+//  VALIDA CABEÇALHOS — detecta se alguém reordenou/renomeou colunas
+// ═══════════════════════════════════════════════════════════════════
+// Checagem best-effort: procura uma palavra-chave esperada em qualquer uma das 3 linhas de
+// cabeçalho (1-3) daquela coluna. Só avisa (não aborta) — o texto exato do cabeçalho na
+// planilha real não foi confirmado, então um alarme falso aqui não pode travar o script.
+function validarCabecalhos(linhas) {
+  const cabecalho = linhas.slice(0, 3);
+  const esperado = [
+    [COL.NOME, 'nome'], [COL.EMAIL, 'mail'], [COL.TIPO, 'tipo'],
+    [COL.DATA, 'data'], [COL.STATUS, 'status'],
+  ];
+  for (const [idx, trecho] of esperado) {
+    const bateu = cabecalho.some(l => (l[idx] || '').toLowerCase().includes(trecho));
+    if (!bateu) {
+      aviso(`Cabeçalho da coluna ${colLetra(idx)} não parece o esperado (procurando por "${trecho}") — confira se as colunas da planilha não foram reordenadas.`);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
 //  PROCESSA CSV E RETORNA PENDENTES
 // ═══════════════════════════════════════════════════════════════════
 function _processarCSV(csv) {
   const linhas = parseCSV(csv);
   if (linhas.length < 2) { aviso('Planilha sem dados'); return []; }
+  validarCabecalhos(linhas);
 
   const processados  = carregarProcessados();
   const pendentes    = [];
@@ -338,6 +360,7 @@ async function lerPendentes() {
 
     return _processarCSV(csv);
   } catch(e) {
+    if (e instanceof FalhaFatal) throw e;
     err('Erro ao ler planilha: ' + e.message);
     return [];
   }
@@ -417,6 +440,23 @@ function colLetra(idx) {
   return String.fromCharCode(65 + parseInt(idx));
 }
 
+// Confere o Status ATUAL daquela linha, direto na planilha (fetch novo, não usa nada em
+// cache), imediatamente antes de gravar — protege contra sobrescrever um resultado que outra
+// execução (ex.: rodada manual, ou duas instâncias do script abertas por engano) já gravou
+// nessa mesma linha enquanto esta estava processando no Backoffice.
+async function statusAindaPendente(rowNum) {
+  const planilha = await abrirPlanilha();
+  const csv = await planilha.evaluate(async (url) => {
+    const r = await fetch(url, { credentials: 'include' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.text();
+  }, PLANILHA_CSV);
+  const linhas = parseCSV(csv);
+  const row = linhas[rowNum - 1] || [];
+  const status = (row[COL.STATUS] || '').trim();
+  return status === '' || status === '~';
+}
+
 // paresOrdenados: array de [colIdx, valor], gravados NA ORDEM DADA (não usar objeto simples —
 // chaves numéricas de objeto sempre iteram em ordem crescente, o que forçaria a coluna Status
 // a ser sempre a primeira a ser gravada).
@@ -438,6 +478,10 @@ async function atualizarPlanilha(rowNum, paresOrdenados) {
 }
 
 async function registrarSucesso(rowNum, sol) {
+  if (!(await statusAindaPendente(rowNum).catch(() => true))) {
+    aviso(`Linha ${rowNum} não está mais pendente (outra execução já gravou algo nela) — gravação pulada para não sobrescrever.`);
+    return true;
+  }
   inf('Registrando sucesso na planilha...');
   // Status PRIMEIRO: a ação real já foi executada no Backoffice, então a linha precisa ser
   // travada como "Aprovado" antes de qualquer outra coisa — se uma coluna seguinte falhar ao
@@ -452,6 +496,10 @@ async function registrarSucesso(rowNum, sol) {
 
 // categoriaAgente deve ser um dos valores exatos de AGENTE (lista suspensa da coluna S)
 async function registrarFalha(rowNum, sol, categoriaAgente, detalhe = '') {
+  if (!(await statusAindaPendente(rowNum).catch(() => true))) {
+    aviso(`Linha ${rowNum} não está mais pendente (outra execução já gravou algo nela) — gravação pulada para não sobrescrever.`);
+    return true;
+  }
   inf('Registrando falha na planilha...');
   const detalheCurto = String(detalhe || categoriaAgente).substring(0, 120);
   // Não grava a coluna Status em caso de falha (fica em branco, para revisão humana) —
@@ -475,17 +523,11 @@ async function abrirBackoffice() {
   await page.waitForTimeout(2000);
 
   const ehLogin = page.url().includes('login') || page.url().includes('auth') ||
-    await page.locator('input[type="email"]').isVisible().catch(() => false);
+    await page.locator('input[type="email"]').first().isVisible().catch(() => false);
 
   if (ehLogin) {
-    inf('Fazendo login no Backoffice...');
-    await page.locator('input[type="email"], input[name*="email"]').first().fill(LOGIN_BACKOFFICE.email);
-    await page.waitForTimeout(400);
-    await page.locator('input[type="password"]').first().fill(LOGIN_BACKOFFICE.senha);
-    await page.waitForTimeout(400);
-    await page.locator('button[type="submit"], button:has-text("Entrar")').first().click();
-    await page.waitForTimeout(3000);
-    ok('Login realizado');
+    await page.close().catch(() => {});
+    throw new FalhaFatal('Sessão do Backoffice expirada (caiu na tela de login) — faça login manualmente no Chrome do perfil salvo e rode o script novamente. Não tento logar sozinho.');
   }
 
   // Garante que está na tela de consulta de profissionais, com o campo de busca visível
@@ -574,10 +616,23 @@ async function salvarDiagnostico(page, rotulo) {
 // ═══════════════════════════════════════════════════════════════════
 //  FLUXO A — FECHAMENTO (com e sem reposição)
 // ═══════════════════════════════════════════════════════════════════
-async function executarFechamento(page, sol, comReposicao) {
-  const dados = parsearDescricao(sol.desc);
-  if (!dados) throw new Error(`Não foi possível extrair datas: "${sol.desc}"`);
+// Preenche um campo e RELÊ o valor para confirmar que foi aceito — campos de data/hora às
+// vezes rejeitam o formato digitado e ficam vazios ou truncados silenciosamente. Tenta de
+// novo 1x antes de desistir.
+async function preencherEVerificar(page, locator, rotulo, valor) {
+  await apontarPara(page, locator);
+  await locator.fill(valor);
+  let atual = await locator.inputValue().catch(() => null);
+  if (atual !== valor) {
+    await locator.fill(valor);
+    atual = await locator.inputValue().catch(() => null);
+  }
+  if (atual !== valor) {
+    throw new Error(`Campo "${rotulo}" não aceitou o valor "${valor}" (mostrando "${atual}")`);
+  }
+}
 
+async function executarFechamento(page, sol, dados, comReposicao) {
   inf('Abrindo menu ⋮...');
   const linhaAtiva = linhaDoResultado(page);
   await linhaAtiva.scrollIntoViewIfNeeded().catch(() => {});
@@ -613,11 +668,22 @@ async function executarFechamento(page, sol, comReposicao) {
 
   // Texto EXATO "Agenda" — o menu também tem "Desbloquear agenda", que teria batido
   // com uma busca por substring (e "Agenda" fica antes dela na lista, então .last() pegaria a errada).
-  const itemAgenda = page.locator('[role="menuitem"], li, a').filter({ hasText: /^\s*Agenda\s*$/ }).first();
-  const itemAgendaVisivel = await itemAgenda.isVisible({ timeout: 3000 }).catch(() => false);
+  let itemAgenda = page.locator('[role="menuitem"], li, a').filter({ hasText: /^\s*Agenda\s*$/ }).first();
+  let itemAgendaVisivel = await itemAgenda.isVisible({ timeout: 3000 }).catch(() => false);
   if (!itemAgendaVisivel) {
     // Pode estar fora da área visível do menu (lista rolável) — rola até aparecer.
     await itemAgenda.scrollIntoViewIfNeeded().catch(() => {});
+    itemAgendaVisivel = await itemAgenda.isVisible({ timeout: 1500 }).catch(() => false);
+  }
+  if (!itemAgendaVisivel) {
+    // O menu pode não ter aberto de fato (clique pegou o ícone, não o elemento com o listener).
+    // Sobe um nível no DOM a partir do botão e tenta clicar de novo antes de desistir.
+    aviso('Menu não abriu no primeiro clique — tentando clicar no elemento pai.');
+    await botaoMenu.locator('xpath=..').click({ timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(800);
+    itemAgenda = page.locator('[role="menuitem"], li, a').filter({ hasText: /^\s*Agenda\s*$/ }).first();
+    itemAgendaVisivel = await itemAgenda.isVisible({ timeout: 3000 }).catch(() => false);
+    if (!itemAgendaVisivel) await itemAgenda.scrollIntoViewIfNeeded().catch(() => {});
   }
   await apontarPara(page, itemAgenda);
   const cliqueAgendaOk = await itemAgenda.click({ timeout: 10000 }).then(() => true).catch(() => false);
@@ -634,20 +700,11 @@ async function executarFechamento(page, sol, comReposicao) {
 
   // Campos confirmados na tela real de "Programação de ausência"
   inf(`Preenchendo: FORMS | ${dados.data_ini} ${dados.hora_ini} até ${dados.data_fim} ${dados.hora_fim}`);
-  const campoNome = page.getByLabel('Nome do evento');
-  await apontarPara(page, campoNome); await campoNome.fill('FORMS');
-
-  const campoDataIni = page.getByLabel('Data inicial');
-  await apontarPara(page, campoDataIni); await campoDataIni.fill(dados.data_ini);
-
-  const campoHoraIni = page.getByLabel('Hora inicial');
-  await apontarPara(page, campoHoraIni); await campoHoraIni.fill(dados.hora_ini);
-
-  const campoDataFim = page.getByLabel('Data final');
-  await apontarPara(page, campoDataFim); await campoDataFim.fill(dados.data_fim);
-
-  const campoHoraFim = page.getByLabel('Hora final');
-  await apontarPara(page, campoHoraFim); await campoHoraFim.fill(dados.hora_fim);
+  await preencherEVerificar(page, page.getByLabel('Nome do evento'), 'Nome do evento', 'FORMS');
+  await preencherEVerificar(page, page.getByLabel('Data inicial'), 'Data inicial', dados.data_ini);
+  await preencherEVerificar(page, page.getByLabel('Hora inicial'), 'Hora inicial', dados.hora_ini);
+  await preencherEVerificar(page, page.getByLabel('Data final'), 'Data final', dados.data_fim);
+  await preencherEVerificar(page, page.getByLabel('Hora final'), 'Hora final', dados.hora_fim);
 
   if (comReposicao) {
     // FASE 1 ainda não cobre o fluxo COM reposição — implementar quando validado
@@ -674,11 +731,17 @@ async function executarFechamento(page, sol, comReposicao) {
   await modalConfirmar.click();
   await page.waitForTimeout(2000);
 
-  // Validação real de sucesso: o modal deve fechar sem erro visível
+  // Validação real de sucesso: o modal deve fechar sem erro visível. Critério principal e
+  // obrigatório é este (modal fechado) — o texto exato do toast de sucesso do sistema não foi
+  // confirmado ainda, então checá-lo aqui é só um sinal extra no log, nunca motivo de falha.
   const modalAindaAberto = await modalConfirmar.isVisible().catch(() => false);
   if (modalAindaAberto) {
     throw new Error('Modal não fechou após confirmar — possível erro do sistema');
   }
+
+  const toast = await page.locator('text=/programada/i').first().innerText({ timeout: 2000 }).catch(() => null);
+  if (toast) inf(`Confirmação visual encontrada: "${toast}"`);
+  else aviso('Não encontrei uma notificação de sucesso na tela (pode só não ter o texto esperado) — seguindo pelo critério do modal fechado.');
 
   ok(`Fechamento programado e confirmado — ${sol.nome || sol.email}`);
 }
@@ -733,13 +796,17 @@ async function processarSolicitacao(sol) {
   inf(`Linha : ${sol.rowIndex + 1}`);
   sep();
 
-  // (Indicador visual "⏳" na planilha desativado por ora — a navegação pela Caixa de Nome
-  // está instável nessa planilha e travava aqui antes mesmo de chegar no Backoffice. Prioridade
-  // agora é validar o fluxo no Backoffice; a escrita na planilha volta depois, via Apps Script.)
-
   // Já tentado antes (ex: crash na execução anterior deixou o Status em branco de novo)
   if (sol.jaProcessadoAntes) {
     const registrado = await registrarFalha(sol.rowIndex + 1, sol, AGENTE.JA_REALIZADA_ANTES, 'Solicitação já havia sido processada anteriormente.');
+    return { executado: false, registrado };
+  }
+
+  // Extrai data/hora da descrição ANTES de abrir o Backoffice — se não der para extrair,
+  // não tem por que nem tentar a ação lá.
+  const dadosDescricao = parsearDescricao(sol.desc);
+  if (!dadosDescricao) {
+    const registrado = await registrarFalha(sol.rowIndex + 1, sol, AGENTE.TELA_INESPERADA, `Não foi possível extrair data/hora da descrição: "${sol.desc}"`);
     return { executado: false, registrado };
   }
 
@@ -769,7 +836,7 @@ async function processarSolicitacao(sol) {
 
     // FASE 1: apenas fechamento sem reposição
     if (tipo.includes('fechamento') && tipo.includes('sem reposição')) {
-      await executarFechamento(page, sol, false);
+      await executarFechamento(page, sol, dadosDescricao, false);
     } else {
       await page.close();
       const registrado = await registrarFalha(sol.rowIndex + 1, sol, AGENTE.TELA_INESPERADA, `Tipo fora do escopo da Fase 1: ${sol.tipo}`);
@@ -783,6 +850,10 @@ async function processarSolicitacao(sol) {
     return { executado: true, registrado };
 
   } catch(e) {
+    if (e instanceof FalhaFatal) {
+      if (page) await page.close().catch(() => {});
+      throw e; // não é falha desta linha — interrompe toda a execução
+    }
     err(`Erro: ${e.message}`);
     if (page) await page.close().catch(() => {});
     const registrado = await registrarFalha(sol.rowIndex + 1, sol, AGENTE.ERRO_TECNICO, e.message);
@@ -797,10 +868,25 @@ async function ciclo() {
   inf(`[${agoraFormatado()}] Iniciando ciclo de verificação...`);
   let pendentes;
   try { pendentes = await lerPendentes(); }
-  catch(e) { err('Erro ao ler planilha: ' + e.message); return; }
+  catch(e) {
+    if (e instanceof FalhaFatal) { err(`FALHA FATAL: ${e.message}`); process.exit(1); }
+    err('Erro ao ler planilha: ' + e.message);
+    return;
+  }
 
   for (const sol of pendentes) {
-    const { executado, registrado } = await processarSolicitacao(sol);
+    let resultado;
+    try {
+      resultado = await processarSolicitacao(sol);
+    } catch (e) {
+      if (e instanceof FalhaFatal) {
+        err(`FALHA FATAL: ${e.message}`);
+        err('Execução interrompida — resolva a sessão manualmente e rode o script de novo.');
+        process.exit(1);
+      }
+      throw e;
+    }
+    const { executado, registrado } = resultado;
     if (executado && registrado) {
       ok(`Linha ${sol.rowIndex + 1} processada com sucesso.`);
     } else if (executado && !registrado) {
