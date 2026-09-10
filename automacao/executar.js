@@ -14,7 +14,12 @@ const LOGIN_BACKOFFICE = {
 
 const EMAIL_ALERTA     = 'juliana.verissimo@conexasaude.com.br';
 const PLANILHA_URL     = 'https://docs.google.com/spreadsheets/d/1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8/edit#gid=1809280439';
-const PLANILHA_CSV     = 'https://docs.google.com/spreadsheets/d/1bDn7ShNSWvcE6_DIjPUs1swrM7aGuuEFz413tvrI3O8/gviz/tq?tqx=out:csv&gid=1809280439';
+// URL do App da Web do Apps Script (apps_script.gs), implantado como "Qualquer pessoa | Executar como: Eu mesmo".
+// Extensões → Apps Script → Implantar → Nova implantação → App da Web → copiar a URL "/exec" aqui.
+// Usa getRange().getValues() no lado do Apps Script, que ignora qualquer filtro visual ativo na
+// aba — diferente do export CSV via gviz (usado antes), que pode omitir linhas escondidas por um
+// filtro e desalinhar o número da linha real com a posição no arquivo.
+const APPS_SCRIPT_URL  = 'COLE_AQUI_A_URL_DO_APP_DA_WEB_DO_APPS_SCRIPT';
 const BACKOFFICE_URL   = 'https://backoffice.conexasaude.com.br/profissional/consulta';
 const PROFILE_DIR      = path.join(__dirname, 'chrome_profile');
 const PROCESSADOS_FILE = path.join(__dirname, 'processados.json');
@@ -35,8 +40,8 @@ const COL = {
   REPOSICAO:  12,  // M
   STATUS:     13,  // N
   ANALISTA:   14,  // O
-  DATA_EXEC:  16,  // Q
-  HORA_EXEC:  17,  // R
+  // Q (Data execução) e R (Hora execução) não são gravadas por este script — são preenchidas
+  // por outro mecanismo da planilha, não pela automação.
   AGENTE:     18,  // S
   OBSERVACAO: 19,  // T
 };
@@ -85,8 +90,6 @@ function agora() {
   return new Date(d.getTime() + (d.getTimezoneOffset() - 180) * -60000);
 }
 function agoraFormatado() { return agora().toLocaleString('pt-BR'); }
-function agoraData()      { return agora().toLocaleDateString('pt-BR'); }
-function agoraHorario()   { return agora().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); }
 
 function dataJaPassou(dataStr) {
   if (!dataStr) return false;
@@ -234,25 +237,6 @@ async function abrirPlanilha() {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  PARSE CSV
-// ═══════════════════════════════════════════════════════════════════
-function parseCSV(texto) {
-  const linhas = [];
-  let dentro = false, campo = '', linha = [];
-  for (let i = 0; i < texto.length; i++) {
-    const c = texto[i];
-    if (c === '"') { dentro = !dentro; }
-    else if (c === ',' && !dentro) { linha.push(campo.trim()); campo = ''; }
-    else if ((c === '\n' || c === '\r') && !dentro) {
-      if (c === '\r' && texto[i + 1] === '\n') i++;
-      linha.push(campo.trim()); linhas.push(linha); linha = []; campo = '';
-    } else { campo += c; }
-  }
-  if (campo || linha.length) { linha.push(campo.trim()); linhas.push(linha); }
-  return linhas;
-}
-
-// ═══════════════════════════════════════════════════════════════════
 //  PARSE DESCRIÇÃO (extrai datas/horas do texto livre)
 // ═══════════════════════════════════════════════════════════════════
 function parsearDescricao(texto) {
@@ -268,11 +252,14 @@ function parsearDescricao(texto) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  PROCESSA CSV E RETORNA PENDENTES
+//  PROCESSA A LISTA DO APPS SCRIPT E RETORNA PENDENTES
 // ═══════════════════════════════════════════════════════════════════
-function _processarCSV(csv) {
-  const linhas = parseCSV(csv);
-  if (linhas.length < 2) { aviso('Planilha sem dados'); return []; }
+// pendentesBrutos vem do Apps Script (doGet), já filtrado por Status vazio/"~", Tipo entre os
+// 3 válidos, e E-mail preenchido — cada item já traz "row", o número REAL e absoluto da linha
+// na planilha (getRange().getValues() do lado do Apps Script, imune a qualquer filtro visual
+// ativo na aba). Por isso nunca inferimos a linha pela posição no array aqui.
+function _processarPendentes(pendentesBrutos) {
+  if (!pendentesBrutos || !pendentesBrutos.length) { aviso('Nenhuma pendência na planilha'); return []; }
 
   const processados  = carregarProcessados();
   const pendentes    = [];
@@ -281,35 +268,30 @@ function _processarCSV(csv) {
     'fechamento de agenda sem reposição',
   ];
 
-  for (let i = 1; i < linhas.length; i++) {
-    const row = linhas[i];
-    if (!row || row.length < 10) continue;
-    const status = (row[COL.STATUS] || '').trim();
-    if (status !== '' && status !== '~') continue;
-    const tipo  = (row[COL.TIPO]  || '').trim();
-    const email = (row[COL.EMAIL] || '').trim().toLowerCase();
+  for (const p of pendentesBrutos) {
+    const tipo  = (p.tipo  || '').trim();
+    const email = (p.email || '').trim().toLowerCase();
     if (!tiposValidos.some(t => tipo.toLowerCase().includes(t))) continue;
     if (!email) continue;
-    const data  = (row[COL.DATA] || '').trim();
+    const data = (p.data || '').trim();
 
     // Regra: data já passada — não processa, deixa para humano, pula a linha inteira
     if (dataJaPassou(data)) {
-      aviso(`Linha ${i + 1} ignorada — data (${data}) já passou. Deixado para análise humana.`);
+      aviso(`Linha ${p.row} ignorada — data (${data}) já passou. Deixado para análise humana.`);
       continue;
     }
 
     const chave = `${email}_${data}_${tipo}`.replace(/\s+/g, '_').toLowerCase();
     pendentes.push({
-      rowIndex: i,  // 0-based CSV index; rowIndex+1 = número real da linha na planilha
-      row,
+      linha: p.row,  // número real e absoluto da linha na planilha
       chave,
       email,
-      nome:  (row[COL.NOME]      || '').trim(),
+      nome: (p.nome || '').trim(),
       tipo,
-      desc:  (row[COL.DESCRICAO] || '').trim(),
+      desc: (p.desc || '').trim(),
       data,
-      hora_ini: (row[COL.HORA_INI] || '').trim(),
-      hora_fim: (row[COL.HORA_FIM] || '').trim(),
+      hora_ini: (p.hora_ini || '').trim(),
+      hora_fim: (p.hora_fim || '').trim(),
       // Já tentado antes (ex: crash no meio da execução anterior) — registrar em vez de ignorar
       jaProcessadoAntes: !!processados[chave],
     });
@@ -325,21 +307,23 @@ function _processarCSV(csv) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  LÊ PLANILHA — abre no Chrome e faz fetch autenticado do CSV
+//  LÊ PLANILHA — via App da Web do Apps Script (imune a filtros ativos na aba)
 // ═══════════════════════════════════════════════════════════════════
 async function lerPendentes() {
   inf('Verificando planilha (aba PAINEL)...');
-  const planilha = await abrirPlanilha();
+  await garantirNavegador();
+  const page = await _ctx.newPage();
 
   try {
-    const csv = await planilha.evaluate(async (url) => {
-      const r = await fetch(url, { credentials: 'include' });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.text();
-    }, PLANILHA_CSV);
+    await page.goto(APPS_SCRIPT_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const texto = await page.evaluate(() => document.body.innerText);
+    await page.close();
 
-    return _processarCSV(csv);
+    const json = JSON.parse(texto);
+    if (!json.ok) throw new Error(json.msg || 'Apps Script retornou erro');
+    return _processarPendentes(json.pendentes);
   } catch(e) {
+    await page.close().catch(() => {});
     err('Erro ao ler planilha: ' + e.message);
     return [];
   }
@@ -448,8 +432,6 @@ async function registrarSucesso(rowNum, sol) {
   return atualizarPlanilha(rowNum, [
     [COL.STATUS,    STATUS.APROVADO],
     [COL.ANALISTA,  'AGENTE DE IA'],
-    [COL.DATA_EXEC, agoraData()],
-    [COL.HORA_EXEC, agoraHorario()],
     [COL.AGENTE,    AGENTE.REALIZADO],
   ]);
 }
@@ -459,11 +441,10 @@ async function registrarFalha(rowNum, sol, categoriaAgente, detalhe = '') {
   inf('Registrando falha na planilha...');
   const detalheCurto = String(detalhe || categoriaAgente).substring(0, 120);
   // Não grava a coluna Status em caso de falha (fica em branco, para revisão humana) —
-  // só as colunas de diagnóstico (Analista, Data/Hora, categoria do Agente e Observação).
+  // só as colunas de diagnóstico (Analista, categoria do Agente e Observação). Data/Hora de
+  // execução (Q/R) não são gravadas por este script.
   return atualizarPlanilha(rowNum, [
     [COL.ANALISTA,   'AGENTE DE IA'],
-    [COL.DATA_EXEC,  agoraData()],
-    [COL.HORA_EXEC,  agoraHorario()],
     [COL.AGENTE,     categoriaAgente],
     [COL.OBSERVACAO, detalheCurto],
   ]);
@@ -735,7 +716,7 @@ async function processarSolicitacao(sol) {
   sep();
   inf(`PROCESSANDO: ${sol.nome || sol.email}`);
   inf(`Tipo  : ${sol.tipo}`);
-  inf(`Linha : ${sol.rowIndex + 1}`);
+  inf(`Linha : ${sol.linha}`);
   sep();
 
   // (Indicador visual "⏳" na planilha desativado por ora — a navegação pela Caixa de Nome
@@ -744,7 +725,7 @@ async function processarSolicitacao(sol) {
 
   // Já tentado antes (ex: crash na execução anterior deixou o Status em branco de novo)
   if (sol.jaProcessadoAntes) {
-    const registrado = await registrarFalha(sol.rowIndex + 1, sol, AGENTE.JA_REALIZADA_ANTES, 'Solicitação já havia sido processada anteriormente.');
+    const registrado = await registrarFalha(sol.linha, sol, AGENTE.JA_REALIZADA_ANTES, 'Solicitação já havia sido processada anteriormente.');
     return { executado: false, registrado };
   }
 
@@ -755,17 +736,17 @@ async function processarSolicitacao(sol) {
 
     if (resultado === 'nao_encontrado') {
       await page.close();
-      const registrado = await registrarFalha(sol.rowIndex + 1, sol, AGENTE.MEDICO_NAO_ENCONTRADO, `E-mail: ${sol.email}`);
+      const registrado = await registrarFalha(sol.linha, sol, AGENTE.MEDICO_NAO_ENCONTRADO, `E-mail: ${sol.email}`);
       return { executado: false, registrado };
     }
     if (resultado === 'perfil_inativo') {
       await page.close();
-      const registrado = await registrarFalha(sol.rowIndex + 1, sol, AGENTE.PERFIL_INATIVO, `E-mail: ${sol.email}`);
+      const registrado = await registrarFalha(sol.linha, sol, AGENTE.PERFIL_INATIVO, `E-mail: ${sol.email}`);
       return { executado: false, registrado };
     }
     if (resultado === 'sem_informacoes') {
       await page.close();
-      const registrado = await registrarFalha(sol.rowIndex + 1, sol, AGENTE.SEM_INFORMACOES, 'Múltiplos perfis, e-mail inválido, ou caso ambíguo.');
+      const registrado = await registrarFalha(sol.linha, sol, AGENTE.SEM_INFORMACOES, 'Múltiplos perfis, e-mail inválido, ou caso ambíguo.');
       return { executado: false, registrado };
     }
 
@@ -777,20 +758,20 @@ async function processarSolicitacao(sol) {
       await executarFechamento(page, sol, false);
     } else {
       await page.close();
-      const registrado = await registrarFalha(sol.rowIndex + 1, sol, AGENTE.TELA_INESPERADA, `Tipo fora do escopo da Fase 1: ${sol.tipo}`);
+      const registrado = await registrarFalha(sol.linha, sol, AGENTE.TELA_INESPERADA, `Tipo fora do escopo da Fase 1: ${sol.tipo}`);
       return { executado: false, registrado };
     }
 
     await page.waitForTimeout(2000);
     await page.close();
-    const registrado = await registrarSucesso(sol.rowIndex + 1, sol);
+    const registrado = await registrarSucesso(sol.linha, sol);
     if (registrado) salvarProcessado(sol.chave, { nome: sol.nome, email: sol.email, tipo: sol.tipo, data: sol.data });
     return { executado: true, registrado };
 
   } catch(e) {
     err(`Erro: ${e.message}`);
     if (page) await page.close().catch(() => {});
-    const registrado = await registrarFalha(sol.rowIndex + 1, sol, AGENTE.ERRO_TECNICO, e.message);
+    const registrado = await registrarFalha(sol.linha, sol, AGENTE.ERRO_TECNICO, e.message);
     return { executado: false, registrado };
   }
 }
@@ -807,13 +788,13 @@ async function ciclo() {
   for (const sol of pendentes) {
     const { executado, registrado } = await processarSolicitacao(sol);
     if (executado && registrado) {
-      ok(`Linha ${sol.rowIndex + 1} processada com sucesso.`);
+      ok(`Linha ${sol.linha} processada com sucesso.`);
     } else if (executado && !registrado) {
-      err(`Linha ${sol.rowIndex + 1}: ação foi executada no Backoffice, mas FALHOU ao registrar na planilha — verifique manualmente essa linha.`);
+      err(`Linha ${sol.linha}: ação foi executada no Backoffice, mas FALHOU ao registrar na planilha — verifique manualmente essa linha.`);
     } else if (registrado) {
-      aviso(`Linha ${sol.rowIndex + 1} não processada — falha registrada na planilha.`);
+      aviso(`Linha ${sol.linha} não processada — falha registrada na planilha.`);
     } else {
-      err(`Linha ${sol.rowIndex + 1} não processada E também FALHOU ao registrar a falha na planilha — verifique manualmente essa linha.`);
+      err(`Linha ${sol.linha} não processada E também FALHOU ao registrar a falha na planilha — verifique manualmente essa linha.`);
     }
     await new Promise(r => setTimeout(r, 3000));
   }
