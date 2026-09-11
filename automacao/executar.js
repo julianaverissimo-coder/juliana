@@ -512,6 +512,14 @@ async function registrarFalha(rowNum, sol, categoriaAgente, detalhe = '') {
   ]);
 }
 
+// A tela de Profissionais (busca, tabela, menu ⋮, formulário de ausência, tudo) não é a
+// página principal do Backoffice — é um <iframe> carregado de outro domínio
+// (backoffice-v2.conexasaude.com.br), confirmado no diagnóstico salvo. Por isso os elementos
+// dessa tela nunca são buscados direto em "page" — sempre através deste frame.
+function frameProfissionais(page) {
+  return page.frameLocator('iframe[src*="backoffice-v2.conexasaude.com.br"]');
+}
+
 // ═══════════════════════════════════════════════════════════════════
 //  BACKOFFICE — abre em aba separada
 // ═══════════════════════════════════════════════════════════════════
@@ -534,7 +542,7 @@ async function abrirBackoffice() {
   await page.goto(BACKOFFICE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.waitForLoadState('networkidle').catch(() => {});
 
-  const campoBusca = page.getByPlaceholder(/profissional/i);
+  const campoBusca = frameProfissionais(page).getByPlaceholder(/profissional/i);
   try {
     await campoBusca.waitFor({ state: 'visible', timeout: 40000 });
   } catch (e) {
@@ -561,7 +569,8 @@ async function buscarProfissional(page, email) {
   await page.waitForLoadState('networkidle').catch(() => {});
   await page.waitForTimeout(1500);
 
-  const campo = page.getByPlaceholder(/profissional/i);
+  const frame = frameProfissionais(page);
+  const campo = frame.getByPlaceholder(/profissional/i);
   await campo.waitFor({ state: 'visible', timeout: 10000 });
   await apontarPara(page, campo);
   await campo.clear();
@@ -577,7 +586,7 @@ async function buscarProfissional(page, email) {
   await page.waitForTimeout(2500);
 
   // Conta quantas linhas de resultado existem na tabela
-  const linhas = page.locator('table tbody tr, [role="row"]').filter({ hasNotText: 'ID Profissional' });
+  const linhas = frame.locator('table tbody tr, [role="row"]').filter({ hasNotText: 'ID Profissional' });
   const totalLinhas = await linhas.count();
 
   if (totalLinhas === 0) {
@@ -600,7 +609,7 @@ async function buscarProfissional(page, email) {
 // Mesma busca de linha usada em buscarProfissional (já validada como resultado único) —
 // evita usar uma segunda busca solta que pode acertar uma linha escondida/errada da tabela.
 function linhaDoResultado(page) {
-  return page.locator('table tbody tr, [role="row"]').filter({ hasNotText: 'ID Profissional' }).first();
+  return frameProfissionais(page).locator('table tbody tr, [role="row"]').filter({ hasNotText: 'ID Profissional' }).first();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -615,6 +624,14 @@ async function salvarDiagnostico(page, rotulo) {
     await page.screenshot({ path: `${base}.png`, fullPage: true }).catch(() => {});
     const html = await page.content().catch(() => '');
     fs.writeFileSync(`${base}.html`, html);
+    // A tela de Profissionais roda dentro de um iframe (ver frameProfissionais) — o
+    // page.content() acima só traz a página de fora, então salva o HTML de dentro do
+    // iframe também, se ele existir, pra não depender de pedir isso de novo.
+    const frameProf = page.frames().find(f => f.url().includes('backoffice-v2.conexasaude.com.br'));
+    if (frameProf) {
+      const htmlFrame = await frameProf.content().catch(() => '');
+      if (htmlFrame) fs.writeFileSync(`${base}_iframe.html`, htmlFrame);
+    }
     aviso(`Diagnóstico salvo em: ${base}.png / ${base}.html`);
   } catch (e) { err('Falha ao salvar diagnóstico: ' + e.message); }
 }
@@ -639,6 +656,7 @@ async function preencherEVerificar(page, locator, rotulo, valor) {
 }
 
 async function executarFechamento(page, sol, dados, comReposicao) {
+  const frame = frameProfissionais(page);
   inf('Abrindo menu ⋮...');
   const linhaAtiva = linhaDoResultado(page);
   await linhaAtiva.scrollIntoViewIfNeeded().catch(() => {});
@@ -674,7 +692,7 @@ async function executarFechamento(page, sol, dados, comReposicao) {
 
   // Texto EXATO "Agenda" — o menu também tem "Desbloquear agenda", que teria batido
   // com uma busca por substring (e "Agenda" fica antes dela na lista, então .last() pegaria a errada).
-  let itemAgenda = page.locator('[role="menuitem"], li, a').filter({ hasText: /^\s*Agenda\s*$/ }).first();
+  let itemAgenda = frame.locator('[role="menuitem"], li, a').filter({ hasText: /^\s*Agenda\s*$/ }).first();
   let itemAgendaVisivel = await itemAgenda.isVisible({ timeout: 3000 }).catch(() => false);
   if (!itemAgendaVisivel) {
     // Pode estar fora da área visível do menu (lista rolável) — rola até aparecer.
@@ -687,7 +705,7 @@ async function executarFechamento(page, sol, dados, comReposicao) {
     aviso('Menu não abriu no primeiro clique — tentando clicar no elemento pai.');
     await botaoMenu.locator('xpath=..').click({ timeout: 5000 }).catch(() => {});
     await page.waitForTimeout(800);
-    itemAgenda = page.locator('[role="menuitem"], li, a').filter({ hasText: /^\s*Agenda\s*$/ }).first();
+    itemAgenda = frame.locator('[role="menuitem"], li, a').filter({ hasText: /^\s*Agenda\s*$/ }).first();
     itemAgendaVisivel = await itemAgenda.isVisible({ timeout: 3000 }).catch(() => false);
     if (!itemAgendaVisivel) await itemAgenda.scrollIntoViewIfNeeded().catch(() => {});
   }
@@ -699,18 +717,18 @@ async function executarFechamento(page, sol, dados, comReposicao) {
   }
   await page.waitForTimeout(2000);
 
-  const abaAusencias = page.locator('text=Ausências');
+  const abaAusencias = frame.locator('text=Ausências');
   await apontarPara(page, abaAusencias);
   await abaAusencias.click();
   await page.waitForTimeout(1500);
 
   // Campos confirmados na tela real de "Programação de ausência"
   inf(`Preenchendo: FORMS | ${dados.data_ini} ${dados.hora_ini} até ${dados.data_fim} ${dados.hora_fim}`);
-  await preencherEVerificar(page, page.getByLabel('Nome do evento'), 'Nome do evento', 'FORMS');
-  await preencherEVerificar(page, page.getByLabel('Data inicial'), 'Data inicial', dados.data_ini);
-  await preencherEVerificar(page, page.getByLabel('Hora inicial'), 'Hora inicial', dados.hora_ini);
-  await preencherEVerificar(page, page.getByLabel('Data final'), 'Data final', dados.data_fim);
-  await preencherEVerificar(page, page.getByLabel('Hora final'), 'Hora final', dados.hora_fim);
+  await preencherEVerificar(page, frame.getByLabel('Nome do evento'), 'Nome do evento', 'FORMS');
+  await preencherEVerificar(page, frame.getByLabel('Data inicial'), 'Data inicial', dados.data_ini);
+  await preencherEVerificar(page, frame.getByLabel('Hora inicial'), 'Hora inicial', dados.hora_ini);
+  await preencherEVerificar(page, frame.getByLabel('Data final'), 'Data final', dados.data_fim);
+  await preencherEVerificar(page, frame.getByLabel('Hora final'), 'Hora final', dados.hora_fim);
 
   if (comReposicao) {
     // FASE 1 ainda não cobre o fluxo COM reposição — implementar quando validado
@@ -718,18 +736,18 @@ async function executarFechamento(page, sol, dados, comReposicao) {
   }
 
   // Fase 1: fechamento SEM reposição — marca "Reagendar atendimento conflitante" (confirmado com a Juliana)
-  const opcaoReagendar = page.getByText('Reagendar atendimento conflitante');
+  const opcaoReagendar = frame.getByText('Reagendar atendimento conflitante');
   await apontarPara(page, opcaoReagendar);
   await opcaoReagendar.click();
 
   await page.waitForTimeout(500);
-  const botaoProgramar = page.locator('button:has-text("Programar")');
+  const botaoProgramar = frame.locator('button:has-text("Programar")');
   await apontarPara(page, botaoProgramar);
   await botaoProgramar.click();
   await page.waitForTimeout(1000);
 
   // Modal de confirmação: "Programar ausência?" → "Sim, programar"
-  const modalConfirmar = page.getByRole('button', { name: 'Sim, programar' });
+  const modalConfirmar = frame.getByRole('button', { name: 'Sim, programar' });
   const apareceuModal  = await modalConfirmar.isVisible({ timeout: 5000 }).catch(() => false);
   if (!apareceuModal) {
     throw new Error('Modal de confirmação "Programar ausência?" não apareceu — tela inesperada');
@@ -745,7 +763,10 @@ async function executarFechamento(page, sol, dados, comReposicao) {
     throw new Error('Modal não fechou após confirmar — possível erro do sistema');
   }
 
-  const toast = await page.locator('text=/programada/i').first().innerText({ timeout: 2000 }).catch(() => null);
+  // A notificação de sucesso pode aparecer no shell principal (fora do iframe) ou dentro
+  // dele — tenta os dois, sem deixar isso travar o fluxo (é só um sinal extra no log).
+  const toast = await frame.locator('text=/programada/i').first().innerText({ timeout: 1500 }).catch(() => null)
+    || await page.locator('text=/programada/i').first().innerText({ timeout: 1500 }).catch(() => null);
   if (toast) inf(`Confirmação visual encontrada: "${toast}"`);
   else aviso('Não encontrei uma notificação de sucesso na tela (pode só não ter o texto esperado) — seguindo pelo critério do modal fechado.');
 
